@@ -1,4 +1,4 @@
-name: Infra K8s CI/CD - Terraform
+name: Kubernetes Edge Terraform
 
 on:
   pull_request:
@@ -23,14 +23,87 @@ on:
         options:
           - plan
           - apply
+      environment:
+        description: "Target environment"
+        required: true
+        default: "homolog"
+        type: choice
+        options:
+          - homolog
+          - prod
 
 permissions:
   contents: read
 
 jobs:
-  terraform:
-    name: Terraform K8s
+  validate:
+    name: Validate Kubernetes infrastructure
     runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.15.8
+          terraform_wrapper: false
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Terraform fmt
+        working-directory: terraform
+        run: terraform fmt -check -recursive
+
+      - name: Terraform init for pull requests
+        if: github.event_name == 'pull_request'
+        working-directory: terraform
+        run: terraform init -backend=false
+
+      - name: Terraform init with remote state
+        if: github.event_name != 'pull_request'
+        working-directory: terraform
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
+            -backend-config="key=${{ secrets.TF_STATE_KEY }}" \
+            -backend-config="region=${{ secrets.AWS_REGION }}" \
+            -backend-config="dynamodb_table=${{ secrets.TF_LOCK_TABLE }}"
+
+      - name: Terraform validate
+        working-directory: terraform
+        run: terraform validate
+
+      - name: Terraform plan
+        working-directory: terraform
+        env:
+          TF_VAR_environment: ${{ (github.base_ref || github.ref_name) == 'main' && 'prod' || 'homolog' }}
+          TF_VAR_api_backend_url: ${{ secrets.API_BACKEND_URL }}
+          TF_VAR_auth_lambda_invoke_arn: ${{ secrets.AUTH_LAMBDA_INVOKE_ARN }}
+          TF_VAR_auth_lambda_function_name: ${{ secrets.AUTH_LAMBDA_FUNCTION_NAME }}
+        run: terraform plan
+
+      - name: Render Kubernetes manifests
+        run: kubectl kustomize k8s > rendered-k8s.yaml
+
+      - name: Check rendered Kubernetes manifests
+        run: test -s rendered-k8s.yaml
+
+  deploy:
+    name: Apply Kubernetes infrastructure
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.action == 'apply')
+    needs: validate
+    runs-on: ubuntu-latest
+    environment: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || (github.ref_name == 'main' && 'prod' || 'homolog') }}
 
     defaults:
       run:
@@ -46,32 +119,25 @@ jobs:
           terraform_version: 1.15.8
           terraform_wrapper: false
 
-      - name: Terraform fmt
-        run: terraform fmt -check -recursive
-
       - name: Configure AWS credentials
-        if: github.event_name != 'pull_request'
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: Terraform init without backend for pull requests
-        if: github.event_name == 'pull_request'
-        run: terraform init -backend=false
-
-      - name: Terraform init
-        if: github.event_name != 'pull_request'
-        run: terraform init
-
-      - name: Terraform validate
-        run: terraform validate
-
-      - name: Terraform plan
-        if: github.event_name != 'pull_request'
-        run: terraform plan
+      - name: Terraform init with remote state
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
+            -backend-config="key=${{ secrets.TF_STATE_KEY }}" \
+            -backend-config="region=${{ secrets.AWS_REGION }}" \
+            -backend-config="dynamodb_table=${{ secrets.TF_LOCK_TABLE }}"
 
       - name: Terraform apply
-        if: github.event_name == 'workflow_dispatch' && inputs.action == 'apply'
+        env:
+          TF_VAR_environment: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || (github.ref_name == 'main' && 'prod' || 'homolog') }}
+          TF_VAR_api_backend_url: ${{ secrets.API_BACKEND_URL }}
+          TF_VAR_auth_lambda_invoke_arn: ${{ secrets.AUTH_LAMBDA_INVOKE_ARN }}
+          TF_VAR_auth_lambda_function_name: ${{ secrets.AUTH_LAMBDA_FUNCTION_NAME }}
         run: terraform apply -auto-approve

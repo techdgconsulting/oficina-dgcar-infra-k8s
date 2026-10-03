@@ -47,3 +47,18 @@ output "github_actions_iam_user_arn" {
   description = "Expected IAM user ARN for the GitHub Actions deployment user when optional access automation is enabled."
   value       = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:user/${var.github_actions_iam_user_name}"
 }
+
+output "api_gateway_id" {
+  description = "HTTP API Gateway ID."
+  value       = var.enable_api_gateway ? aws_apigatewayv2_api.main[0].id : null
+}
+
+output "api_gateway_endpoint" {
+  description = "HTTP API Gateway endpoint."
+  value       = var.enable_api_gateway ? aws_apigatewayv2_api.main[0].api_endpoint : null
+}
+
+output "api_gateway_execution_arn" {
+  description = "HTTP API Gateway execution ARN."
+  value       = var.enable_api_gateway ? aws_apigatewayv2_api.main[0].execution_arn : null
+}

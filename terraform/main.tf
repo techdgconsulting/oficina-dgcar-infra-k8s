@@ -301,3 +301,83 @@ resource "aws_eks_access_policy_association" "github_actions_cluster_admin" {
     type = "cluster"
   }
 }
+
+resource "aws_apigatewayv2_api" "main" {
+  count = var.enable_api_gateway ? 1 : 0
+
+  name          = "${local.name}-api-gateway"
+  protocol_type = "HTTP"
+
+  cors_configuration {
+    allow_headers = ["authorization", "content-type", "x-correlation-id"]
+    allow_methods = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+    allow_origins = var.api_gateway_allowed_origins
+    max_age       = 300
+  }
+
+  tags = {
+    Name = "${local.name}-api-gateway"
+  }
+}
+
+resource "aws_apigatewayv2_stage" "default" {
+  count = var.enable_api_gateway ? 1 : 0
+
+  api_id      = aws_apigatewayv2_api.main[0].id
+  name        = "$default"
+  auto_deploy = true
+
+  default_route_settings {
+    throttling_burst_limit = var.api_gateway_throttle_burst_limit
+    throttling_rate_limit  = var.api_gateway_throttle_rate_limit
+  }
+
+  tags = {
+    Name = "${local.name}-api-gateway-default-stage"
+  }
+}
+
+resource "aws_apigatewayv2_integration" "app" {
+  count = var.enable_api_gateway && var.api_backend_url != null ? 1 : 0
+
+  api_id                 = aws_apigatewayv2_api.main[0].id
+  integration_type       = "HTTP_PROXY"
+  integration_method     = "ANY"
+  integration_uri        = var.api_backend_url
+  payload_format_version = "1.0"
+}
+
+resource "aws_apigatewayv2_route" "app_proxy" {
+  count = var.enable_api_gateway && var.api_backend_url != null ? 1 : 0
+
+  api_id    = aws_apigatewayv2_api.main[0].id
+  route_key = "ANY /{proxy+}"
+  target    = "integrations/${aws_apigatewayv2_integration.app[0].id}"
+}
+
+resource "aws_apigatewayv2_integration" "auth_lambda" {
+  count = var.enable_api_gateway && var.auth_lambda_invoke_arn != null ? 1 : 0
+
+  api_id                 = aws_apigatewayv2_api.main[0].id
+  integration_type       = "AWS_PROXY"
+  integration_uri        = var.auth_lambda_invoke_arn
+  payload_format_version = "2.0"
+}
+
+resource "aws_apigatewayv2_route" "auth_cpf" {
+  count = var.enable_api_gateway && var.auth_lambda_invoke_arn != null ? 1 : 0
+
+  api_id    = aws_apigatewayv2_api.main[0].id
+  route_key = "POST /auth/cpf"
+  target    = "integrations/${aws_apigatewayv2_integration.auth_lambda[0].id}"
+}
+
+resource "aws_lambda_permission" "allow_api_gateway_auth" {
+  count = var.enable_api_gateway && var.auth_lambda_function_name != null ? 1 : 0
+
+  statement_id  = "AllowExecutionFromApiGateway"
+  action        = "lambda:InvokeFunction"
+  function_name = var.auth_lambda_function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_apigatewayv2_api.main[0].execution_arn}/*/*"
+}

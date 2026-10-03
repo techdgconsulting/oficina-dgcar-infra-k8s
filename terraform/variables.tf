@@ -81,3 +81,45 @@ variable "github_actions_iam_user_name" {
   type        = string
   default     = "github-actions-oficina-dgcar"
 }
+
+variable "enable_api_gateway" {
+  description = "Whether to create the HTTP API Gateway entrypoint."
+  type        = bool
+  default     = true
+}
+
+variable "api_backend_url" {
+  description = "Public or private HTTP endpoint that receives proxied application traffic from API Gateway."
+  type        = string
+  default     = null
+}
+
+variable "auth_lambda_invoke_arn" {
+  description = "Invoke ARN of the CPF authentication Lambda, produced by oficina-dgcar-auth-lambda."
+  type        = string
+  default     = null
+}
+
+variable "auth_lambda_function_name" {
+  description = "Function name of the CPF authentication Lambda for API Gateway invoke permission."
+  type        = string
+  default     = null
+}
+
+variable "api_gateway_allowed_origins" {
+  description = "Allowed origins for API Gateway CORS."
+  type        = list(string)
+  default     = ["*"]
+}
+
+variable "api_gateway_throttle_burst_limit" {
+  description = "API Gateway burst limit."
+  type        = number
+  default     = 100
+}
+
+variable "api_gateway_throttle_rate_limit" {
+  description = "API Gateway rate limit per second."
+  type        = number
+  default     = 50
+}

@@ -12,3 +12,9 @@ node_disk_size      = 20
 
 enable_github_actions_eks_access = false
 github_actions_iam_user_name     = "github-actions-oficina-dgcar"
+
+enable_api_gateway          = true
+api_backend_url             = null
+auth_lambda_invoke_arn      = null
+auth_lambda_function_name   = null
+api_gateway_allowed_origins = ["*"]
