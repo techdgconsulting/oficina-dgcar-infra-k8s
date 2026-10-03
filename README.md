@@ -97,6 +97,8 @@ terraform validate
 terraform plan
 ```
 
+Para executar `terraform plan` sem acesso ao backend remoto, renomeie temporariamente `backend.tf` antes do `terraform init`.
+
 Para validar manifests:
 
 ```bash
