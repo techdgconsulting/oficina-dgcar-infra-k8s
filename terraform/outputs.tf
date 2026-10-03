@@ -45,7 +45,7 @@ output "eks_cluster_endpoint" {
 
 output "github_actions_iam_user_arn" {
   description = "Expected IAM user ARN for the GitHub Actions deployment user when optional access automation is enabled."
-  value       = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:user/${var.github_actions_iam_user_name}"
+  value       = var.github_actions_iam_user_arn
 }
 
 output "api_gateway_id" {

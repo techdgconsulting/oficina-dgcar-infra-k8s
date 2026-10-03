@@ -1,12 +1,6 @@
-data "aws_availability_zones" "available" {
-  state = "available"
-}
-
-data "aws_caller_identity" "current" {}
-
 locals {
   name = "${var.project_name}-${var.environment}"
-  azs  = slice(data.aws_availability_zones.available.names, 0, 2)
+  azs  = var.availability_zones
 }
 
 resource "aws_vpc" "main" {
@@ -283,15 +277,15 @@ resource "aws_iam_user_policy" "github_actions_describe_cluster" {
 }
 
 resource "aws_eks_access_entry" "github_actions" {
-  count = var.enable_github_actions_eks_access ? 1 : 0
+  count = var.enable_github_actions_eks_access && var.github_actions_iam_user_arn != null ? 1 : 0
 
   cluster_name  = aws_eks_cluster.main.name
-  principal_arn = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:user/${var.github_actions_iam_user_name}"
+  principal_arn = var.github_actions_iam_user_arn
   type          = "STANDARD"
 }
 
 resource "aws_eks_access_policy_association" "github_actions_cluster_admin" {
-  count = var.enable_github_actions_eks_access ? 1 : 0
+  count = var.enable_github_actions_eks_access && var.github_actions_iam_user_arn != null ? 1 : 0
 
   cluster_name  = aws_eks_cluster.main.name
   principal_arn = aws_eks_access_entry.github_actions[0].principal_arn

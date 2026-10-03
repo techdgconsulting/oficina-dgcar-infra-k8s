@@ -91,7 +91,7 @@ Push em `main` aplica no environment `prod`, sujeito a aprovacao do environment 
 ```bash
 cd terraform
 cp terraform.tfvars.example terraform.tfvars
-terraform init -backend=false
+terraform init -backend=false -reconfigure
 terraform fmt -recursive
 terraform validate
 terraform plan
