@@ -1,68 +1,112 @@
 # oficina-dgcar-infra-k8s
 
-Repositório da infraestrutura Kubernetes e borda de entrada da Oficina Mecânica DGCar no Tech Challenge 3.
+Infraestrutura Terraform de Kubernetes, registry e borda de entrada da Oficina Mecanica DGCar.
 
-## Propósito
+## Proposito
 
-- Provisionar EKS.
-- Provisionar ECR.
-- Provisionar API Gateway.
-- Integrar API Gateway com a aplicação no EKS.
-- Integrar API Gateway com a Lambda Auth CPF.
-- Manter manifests Kubernetes, Kustomize/Helm, HPA, namespace, service e deployment base.
+Este repositorio provisiona e documenta a infraestrutura de execucao da aplicacao:
 
-## Tecnologia Alvo
+- VPC, subnets e rotas base;
+- Amazon EKS;
+- Amazon ECR;
+- API Gateway HTTP;
+- integracao API Gateway para a API em Kubernetes;
+- integracao API Gateway para a Lambda de autenticacao por CPF;
+- manifests Kubernetes da aplicacao principal;
+- HPA, namespace, service, deployment, configmap e secret example.
 
-- Terraform
-- AWS EKS
-- AWS ECR
-- AWS API Gateway
-- Kubernetes
-- Kustomize ou Helm
-- GitHub Actions
+## Tecnologias
 
-## Branches E Ambientes
+- Terraform;
+- AWS EKS;
+- AWS ECR;
+- AWS API Gateway;
+- Kubernetes;
+- Kustomize;
+- GitHub Actions.
 
-- `main`: produção, protegida e sem commits diretos.
-- `homolog`: homologação, com deploy automático quando configurado.
-- GitHub Environments esperados: `homolog` e `prod`.
+## Separacao De Responsabilidades
 
-## Secrets Esperados
+Este repositorio nao provisiona o RDS PostgreSQL e nao contem codigo da aplicacao Java ou da Lambda.
 
-- `AWS_ACCESS_KEY_ID`
-- `AWS_SECRET_ACCESS_KEY`
-- `AWS_REGION`
-- `TF_STATE_BUCKET`
-- `TF_STATE_KEY`
-- `TF_LOCK_TABLE`, se aplicável
-- `NEW_RELIC_LICENSE_KEY`, se a integração Kubernetes for aplicada por este repositório
+Outputs publicados para outros repositorios:
 
-## Relação Com Os Demais Repositórios
+- `vpc_id`;
+- `public_subnet_ids`;
+- `private_subnet_ids`;
+- `eks_cluster_security_group_id`;
+- `ecr_repository_url`;
+- `eks_cluster_name`;
+- `eks_cluster_endpoint`;
+- `api_gateway_id`;
+- `api_gateway_endpoint`;
+- `api_gateway_execution_arn`.
 
-- Consome outputs de banco do `oficina-dgcar-infra-db`.
-- Consome imagem publicada pelo `oficina-dgcar-api`.
-- Integra a Lambda do `oficina-dgcar-auth-lambda` ao API Gateway.
+Entradas esperadas de outros repositorios:
 
-## Status
+- `auth_lambda_invoke_arn`, produzido por `oficina-dgcar-auth-lambda`;
+- `auth_lambda_function_name`, produzido por `oficina-dgcar-auth-lambda`;
+- `api_backend_url`, endpoint HTTP da aplicacao exposta no Kubernetes;
+- dados de conexao do banco, produzidos por `oficina-dgcar-infra-db`, aplicados via Secret/ConfigMap.
 
-Extração inicial realizada a partir do repositório histórico.
+## State Terraform
 
-Artefatos extraídos:
+O backend remoto usa S3 com lock em DynamoDB.
 
-- `k8s/**`
-- Terraform inicial de VPC, EKS, ECR e IAM em `terraform/**`
-- Workflow Terraform em `.github/workflows/terraform.yml`
+Secrets esperados:
 
-O commit de origem está registrado em [`ORIGEM_HISTORICA.md`](./ORIGEM_HISTORICA.md).
+- `AWS_ACCESS_KEY_ID`;
+- `AWS_SECRET_ACCESS_KEY`;
+- `AWS_REGION`;
+- `TF_STATE_BUCKET`;
+- `TF_STATE_KEY`;
+- `TF_LOCK_TABLE`;
+- `API_BACKEND_URL`;
+- `AUTH_LAMBDA_INVOKE_ARN`;
+- `AUTH_LAMBDA_FUNCTION_NAME`;
+- `NEW_RELIC_LICENSE_KEY`, quando a integracao Kubernetes for habilitada.
 
-## Outputs Para Outros Repositórios
+Recomendacao de chaves de state:
 
-Este repositório deve publicar outputs consumidos por outros repositórios:
+- homologacao: `oficina-dgcar/infra-k8s/homolog/terraform.tfstate`;
+- producao: `oficina-dgcar/infra-k8s/prod/terraform.tfstate`.
 
-- `vpc_id`
-- `private_subnet_ids`
-- `eks_cluster_security_group_id`
-- `ecr_repository_url`
-- `eks_cluster_name`
+## Pipeline
 
-`oficina-dgcar-infra-db` depende desses outputs para criar o RDS PostgreSQL com conectividade controlada.
+Pull Requests executam:
+
+- `terraform fmt -check -recursive`;
+- `terraform init`;
+- `terraform validate`;
+- `terraform plan`;
+- renderizacao dos manifests com `kubectl kustomize`;
+- verificacao do manifesto renderizado sem depender de cluster ativo.
+
+Push em `homolog` aplica no environment `homolog`.
+
+Push em `main` aplica no environment `prod`, sujeito a aprovacao do environment no GitHub.
+
+## Execucao Local
+
+```bash
+cd terraform
+cp terraform.tfvars.example terraform.tfvars
+terraform init -backend=false -reconfigure
+terraform fmt -recursive
+terraform validate
+terraform plan
+```
+
+Para executar `terraform plan` sem acesso ao backend remoto, renomeie temporariamente `backend.tf` antes do `terraform init`.
+
+Para validar manifests:
+
+```bash
+kubectl kustomize k8s
+kubectl kustomize k8s > rendered-k8s.yaml
+test -s rendered-k8s.yaml
+```
+
+## Origem Historica
+
+O commit de origem e a rastreabilidade da extracao estao registrados em [`ORIGEM_HISTORICA.md`](./ORIGEM_HISTORICA.md).

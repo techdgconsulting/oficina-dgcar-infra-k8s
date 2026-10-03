@@ -4,6 +4,24 @@ variable "aws_region" {
   default     = "us-east-1"
 }
 
+variable "skip_aws_credentials_validation" {
+  description = "Skip AWS credential validation during local and pull request plans."
+  type        = bool
+  default     = true
+}
+
+variable "skip_aws_metadata_api_check" {
+  description = "Skip AWS metadata API checks during local and pull request plans."
+  type        = bool
+  default     = true
+}
+
+variable "skip_aws_requesting_account_id" {
+  description = "Skip AWS account ID lookup during local and pull request plans."
+  type        = bool
+  default     = true
+}
+
 variable "project_name" {
   description = "Project name used as a prefix for AWS resources."
   type        = string
@@ -32,6 +50,12 @@ variable "private_subnet_cidrs" {
   description = "CIDR blocks reserved for private workloads and RDS subnet sharing."
   type        = list(string)
   default     = ["10.40.11.0/24", "10.40.12.0/24"]
+}
+
+variable "availability_zones" {
+  description = "Availability zones used by public and private subnets."
+  type        = list(string)
+  default     = ["us-east-1a", "us-east-1b"]
 }
 
 variable "eks_cluster_version" {
@@ -80,4 +104,52 @@ variable "github_actions_iam_user_name" {
   description = "Existing IAM user name used by GitHub Actions to push images to ECR and deploy to EKS."
   type        = string
   default     = "github-actions-oficina-dgcar"
+}
+
+variable "github_actions_iam_user_arn" {
+  description = "Existing IAM user ARN used by GitHub Actions for optional EKS access entries."
+  type        = string
+  default     = null
+}
+
+variable "enable_api_gateway" {
+  description = "Whether to create the HTTP API Gateway entrypoint."
+  type        = bool
+  default     = true
+}
+
+variable "api_backend_url" {
+  description = "Public or private HTTP endpoint that receives proxied application traffic from API Gateway."
+  type        = string
+  default     = null
+}
+
+variable "auth_lambda_invoke_arn" {
+  description = "Invoke ARN of the CPF authentication Lambda, produced by oficina-dgcar-auth-lambda."
+  type        = string
+  default     = null
+}
+
+variable "auth_lambda_function_name" {
+  description = "Function name of the CPF authentication Lambda for API Gateway invoke permission."
+  type        = string
+  default     = null
+}
+
+variable "api_gateway_allowed_origins" {
+  description = "Allowed origins for API Gateway CORS."
+  type        = list(string)
+  default     = ["*"]
+}
+
+variable "api_gateway_throttle_burst_limit" {
+  description = "API Gateway burst limit."
+  type        = number
+  default     = 100
+}
+
+variable "api_gateway_throttle_rate_limit" {
+  description = "API Gateway rate limit per second."
+  type        = number
+  default     = 50
 }
