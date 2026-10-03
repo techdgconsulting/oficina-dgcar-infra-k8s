@@ -1,0 +1,14 @@
+aws_region  = "us-east-1"
+project_name = "oficina-dgcar-16soat"
+environment  = "development"
+
+eks_cluster_version = null
+
+node_instance_types = ["t3.small"]
+node_desired_size   = 1
+node_min_size       = 1
+node_max_size       = 2
+node_disk_size      = 20
+
+enable_github_actions_eks_access = false
+github_actions_iam_user_name     = "github-actions-oficina-dgcar"

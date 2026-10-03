@@ -1,0 +1,77 @@
+name: Infra K8s CI/CD - Terraform
+
+on:
+  pull_request:
+    branches:
+      - main
+      - homolog
+  push:
+    branches:
+      - homolog
+      - main
+    paths:
+      - "terraform/**"
+      - "k8s/**"
+      - ".github/workflows/terraform.yml"
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Terraform action to run"
+        required: true
+        default: "plan"
+        type: choice
+        options:
+          - plan
+          - apply
+
+permissions:
+  contents: read
+
+jobs:
+  terraform:
+    name: Terraform K8s
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: terraform
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.15.8
+          terraform_wrapper: false
+
+      - name: Terraform fmt
+        run: terraform fmt -check -recursive
+
+      - name: Configure AWS credentials
+        if: github.event_name != 'pull_request'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Terraform init without backend for pull requests
+        if: github.event_name == 'pull_request'
+        run: terraform init -backend=false
+
+      - name: Terraform init
+        if: github.event_name != 'pull_request'
+        run: terraform init
+
+      - name: Terraform validate
+        run: terraform validate
+
+      - name: Terraform plan
+        if: github.event_name != 'pull_request'
+        run: terraform plan
+
+      - name: Terraform apply
+        if: github.event_name == 'workflow_dispatch' && inputs.action == 'apply'
+        run: terraform apply -auto-approve

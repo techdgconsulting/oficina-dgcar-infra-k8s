@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: oficina-api-config
+  namespace: oficina
+  labels:
+    app.kubernetes.io/name: oficina-api
+    app.kubernetes.io/part-of: oficina-mecanica-dgcar
+data:
+  SPRING_DATASOURCE_URL: "jdbc:postgresql://endpoint-rds-real:5432/oficina"
+  OFICINA_PUBLIC_BASE_URL: "http://localhost:8080"
+  OFICINA_EMAIL_ENABLED: "false"
+  OFICINA_EMAIL_MODE: "LOG"
+  OFICINA_EMAIL_REMETENTE: "no-reply@dgcar.local"
+  SMTP_HOST: "localhost"
+  SMTP_PORT: "587"
+  SMTP_AUTH: "true"
+  SMTP_STARTTLS_ENABLE: "true"
+  MANAGEMENT_HEALTH_MAIL_ENABLED: "false"
+  PAGAMENTO_GATEWAY_APPROVAL_RATE: "1.0"
+  PAGAMENTO_GATEWAY_LATENCY_MS: "0"
