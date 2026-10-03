@@ -54,7 +54,7 @@ jobs:
         uses: azure/setup-kubectl@v4
 
       - name: Configure AWS credentials
-        if: github.event_name != 'pull_request'
+        if: github.event_name == 'workflow_dispatch'
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -66,17 +66,17 @@ jobs:
         run: terraform fmt -check -recursive
 
       - name: Disable remote backend for pull requests
-        if: github.event_name == 'pull_request'
+        if: github.event_name != 'workflow_dispatch'
         working-directory: terraform
         run: mv backend.tf backend.tf.disabled
 
-      - name: Terraform init for pull requests
-        if: github.event_name == 'pull_request'
+      - name: Terraform init without remote state
+        if: github.event_name != 'workflow_dispatch'
         working-directory: terraform
         run: terraform init
 
       - name: Terraform init with remote state
-        if: github.event_name != 'pull_request'
+        if: github.event_name == 'workflow_dispatch'
         working-directory: terraform
         run: |
           terraform init \
@@ -110,7 +110,7 @@ jobs:
 
   deploy:
     name: Apply Kubernetes infrastructure
-    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.action == 'apply')
+    if: github.event_name == 'workflow_dispatch' && inputs.action == 'apply'
     needs: validate
     runs-on: ubuntu-latest
     environment: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || (github.ref_name == 'main' && 'prod' || 'homolog') }}

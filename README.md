@@ -82,9 +82,9 @@ Pull Requests executam:
 - renderizacao dos manifests com `kubectl kustomize`;
 - verificacao do manifesto renderizado sem depender de cluster ativo.
 
-Push em `homolog` aplica no environment `homolog`.
+Push em `homolog` ou `main` executa validacao e plan offline.
 
-Push em `main` aplica no environment `prod`, sujeito a aprovacao do environment no GitHub.
+Apply real deve ser disparado manualmente por `workflow_dispatch`, usando `action=apply` e o environment desejado. O environment `prod` continua sujeito a aprovacao no GitHub.
 
 ## Execucao Local
 
