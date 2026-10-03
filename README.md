@@ -45,4 +45,24 @@ Repositório da infraestrutura Kubernetes e borda de entrada da Oficina Mecânic
 
 ## Status
 
-Estrutura inicial criada. Terraform, manifests e pipeline de infraestrutura serão extraídos nas próximas etapas.
+Extração inicial realizada a partir do repositório histórico.
+
+Artefatos extraídos:
+
+- `k8s/**`
+- Terraform inicial de VPC, EKS, ECR e IAM em `terraform/**`
+- Workflow Terraform em `.github/workflows/terraform.yml`
+
+O commit de origem está registrado em [`ORIGEM_HISTORICA.md`](./ORIGEM_HISTORICA.md).
+
+## Outputs Para Outros Repositórios
+
+Este repositório deve publicar outputs consumidos por outros repositórios:
+
+- `vpc_id`
+- `private_subnet_ids`
+- `eks_cluster_security_group_id`
+- `ecr_repository_url`
+- `eks_cluster_name`
+
+`oficina-dgcar-infra-db` depende desses outputs para criar o RDS PostgreSQL com conectividade controlada.
