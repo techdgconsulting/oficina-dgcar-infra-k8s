@@ -51,7 +51,11 @@ Entradas esperadas de outros repositorios:
 
 ## State Terraform
 
-O backend remoto usa S3 com lock em DynamoDB.
+O backend remoto usa S3 com lockfile nativo:
+
+```text
+use_lockfile=true
+```
 
 Secrets esperados:
 
@@ -60,16 +64,16 @@ Secrets esperados:
 - `AWS_REGION`;
 - `TF_STATE_BUCKET`;
 - `TF_STATE_KEY`;
-- `TF_LOCK_TABLE`;
+- `GH_AUTOMATION_TOKEN`;
 - `API_BACKEND_URL`;
 - `AUTH_LAMBDA_INVOKE_ARN`;
 - `AUTH_LAMBDA_FUNCTION_NAME`;
 - `NEW_RELIC_LICENSE_KEY`, quando a integracao Kubernetes for habilitada.
 
-Recomendacao de chaves de state:
+Chaves de state definidas:
 
-- homologacao: `oficina-dgcar/infra-k8s/homolog/terraform.tfstate`;
-- producao: `oficina-dgcar/infra-k8s/prod/terraform.tfstate`.
+- homologacao: `homolog/infra-k8s/terraform.tfstate`;
+- producao: `prod/infra-k8s/terraform.tfstate`.
 
 ## Pipeline
 
@@ -84,7 +88,31 @@ Pull Requests executam:
 
 Push em `homolog` ou `main` executa validacao e plan offline.
 
-Apply real deve ser disparado manualmente por `workflow_dispatch`, usando `action=apply` e o environment desejado. O environment `prod` continua sujeito a aprovacao no GitHub.
+Apply real e disparado manualmente por `workflow_dispatch`, usando `action=apply` e o environment desejado. O environment `prod` esta sujeito a aprovacao no GitHub.
+
+Depois do `terraform apply`, o workflow publica automaticamente os outputs de rede nos repos dependentes.
+
+Secrets gravados em `oficina-dgcar-auth-lambda`:
+
+- `VPC_ID`;
+- `PRIVATE_SUBNET_IDS`.
+
+Secrets gravados em `oficina-dgcar-infra-db`:
+
+- `VPC_ID`;
+- `PRIVATE_SUBNET_IDS`;
+- `ALLOWED_DB_SECURITY_GROUP_IDS`.
+
+## Automacao Entre Repositorios
+
+O workflow usa `GH_AUTOMATION_TOKEN` para gravar secrets nos repos dependentes via GitHub CLI. Esse token fica configurado nos environments `homolog` e `prod`.
+
+Fluxo automatizado:
+
+1. `oficina-dgcar-infra-k8s` executa `apply`.
+2. Terraform publica `vpc_id`, `private_subnet_ids` e `eks_cluster_security_group_id`.
+3. O workflow grava `VPC_ID` e `PRIVATE_SUBNET_IDS` no repo `oficina-dgcar-auth-lambda`.
+4. O workflow grava `VPC_ID`, `PRIVATE_SUBNET_IDS` e `ALLOWED_DB_SECURITY_GROUP_IDS` no repo `oficina-dgcar-infra-db`.
 
 ## Execucao Local
 
