@@ -68,6 +68,20 @@ Fluxo aplicado:
 
 Da mesma forma, a rota `POST /auth/cpf` so e integrada quando os outputs da Lambda ja foram publicados pelo repositorio `oficina-dgcar-auth-lambda`.
 
+Permissao de invocacao da Lambda:
+
+- a rota `POST /auth/cpf` usa integracao `AWS_PROXY` com a Lambda Auth CPF;
+- a permissao `lambda:InvokeFunction` foi criada com `SourceArn` explicito no formato `arn:aws:execute-api:<regiao>:<account-id>:<api-id>/*/*`;
+- esse formato garante que o API Gateway consiga invocar a Lambda no mesmo account AWS;
+- quando o `SourceArn` fica sem `account-id`, a chamada pode retornar `500 Internal Server Error` no API Gateway sem gerar logs de execucao na Lambda;
+- apos alteracao dessa permissao, o `apply` do Terraform em `homolog` atualiza a policy da Lambda e a rota `POST /auth/cpf` passa a encaminhar chamadas para a funcao.
+
+Endpoint homolog atual:
+
+```text
+POST https://vqgo7dwgqj.execute-api.us-east-1.amazonaws.com/auth/cpf
+```
+
 ## State Terraform
 
 O backend remoto usa S3 com lockfile nativo:
