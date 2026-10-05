@@ -98,6 +98,7 @@ Secrets esperados:
 - `TF_STATE_BUCKET`;
 - `TF_STATE_KEY`;
 - `GH_AUTOMATION_TOKEN`;
+- `GH_ACTIONS_IAM_USER_ARN`;
 - `API_BACKEND_URL`;
 - `AUTH_LAMBDA_INVOKE_ARN`;
 - `AUTH_LAMBDA_FUNCTION_NAME`;
@@ -124,6 +125,54 @@ Push em `homolog` ou `main` executa validacao e plan offline.
 Apply real e disparado manualmente por `workflow_dispatch`, usando `action=apply` e o environment desejado. O environment `prod` esta sujeito a aprovacao no GitHub.
 
 Depois do `terraform apply`, o workflow publica automaticamente os outputs de rede nos repos dependentes.
+
+## Acesso Do GitHub Actions Ao EKS
+
+O EKS usa access entries para autorizar o principal IAM que executa `kubectl` nos workflows.
+
+Foi configurado no environment `homolog` o secret:
+
+```text
+GH_ACTIONS_IAM_USER_ARN=arn:aws:iam::857145323352:user/16soat-tf
+```
+
+Esse ARN e passado para o Terraform como `TF_VAR_github_actions_iam_user_arn` durante `plan` e `apply`.
+
+Recursos Terraform responsaveis:
+
+- `aws_eks_access_entry.github_actions`;
+- `aws_eks_access_policy_association.github_actions_cluster_admin`.
+
+Permissao aplicada:
+
+```text
+arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy
+```
+
+Evidencia operacional em `homolog`:
+
+```bash
+aws eks list-access-entries \
+  --region us-east-1 \
+  --cluster-name oficina-dgcar-homolog-eks
+
+aws eks list-associated-access-policies \
+  --region us-east-1 \
+  --cluster-name oficina-dgcar-homolog-eks \
+  --principal-arn arn:aws:iam::857145323352:user/16soat-tf
+```
+
+O erro abaixo indica ausencia desse access entry ou da policy associada:
+
+```text
+failed to download openapi: the server has asked for the client to provide credentials
+```
+
+Correcao aplicada em `homolog`:
+
+- access entry criado para `arn:aws:iam::857145323352:user/16soat-tf`;
+- policy `AmazonEKSClusterAdminPolicy` associada em escopo `cluster`;
+- `kubectl get namespace` validado com sucesso apos a associacao.
 
 Secrets gravados em `oficina-dgcar-auth-lambda`:
 
