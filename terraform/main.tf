@@ -343,6 +343,10 @@ resource "aws_apigatewayv2_integration" "app" {
   integration_method     = "ANY"
   integration_uri        = var.api_backend_url
   payload_format_version = "1.0"
+
+  request_parameters = {
+    "overwrite:path" = "/$request.path.proxy"
+  }
 }
 
 resource "aws_apigatewayv2_route" "app_proxy" {
