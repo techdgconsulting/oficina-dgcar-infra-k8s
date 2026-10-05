@@ -57,6 +57,7 @@ Integracoes configuradas:
 
 - rota `POST /auth/cpf`, integrada a Lambda de autenticacao por CPF quando `AUTH_LAMBDA_INVOKE_ARN` e `AUTH_LAMBDA_FUNCTION_NAME` existem;
 - rota `ANY /{proxy+}`, integrada ao backend da aplicacao quando `API_BACKEND_URL` existe.
+- parameter mapping `overwrite:path = "/$request.path.proxy"` na integracao HTTP proxy da aplicacao, garantindo que chamadas como `/api/ordens-servico/cliente/1` cheguem ao Spring Boot com o path original.
 
 `API_BACKEND_URL` foi tratado como entrada opcional. Quando o valor esta ausente ou vazio, a integracao HTTP da aplicacao nao e criada. Esse comportamento permite provisionar primeiro a infraestrutura base de VPC, EKS, ECR e API Gateway, antes da aplicacao principal estar exposta em Kubernetes.
 
@@ -80,6 +81,63 @@ Endpoint homolog atual:
 
 ```text
 POST https://vqgo7dwgqj.execute-api.us-east-1.amazonaws.com/auth/cpf
+```
+
+Endpoint base homolog:
+
+```text
+https://vqgo7dwgqj.execute-api.us-east-1.amazonaws.com
+```
+
+Backend HTTP da aplicacao em Kubernetes cadastrado no environment `homolog`:
+
+```text
+API_BACKEND_URL=http://a0340e77e14674adbb11ba17cf6384d8-1700619956.us-east-1.elb.amazonaws.com
+```
+
+Esse valor foi obtido do Service `oficina-api` no EKS:
+
+```powershell
+aws eks update-kubeconfig --region us-east-1 --name oficina-dgcar-homolog-eks
+kubectl get svc oficina-api -n oficina -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
+```
+
+O secret foi gravado no GitHub Environment `homolog` com:
+
+```powershell
+gh secret set API_BACKEND_URL `
+  --repo techdgconsulting/oficina-dgcar-infra-k8s `
+  --env homolog `
+  --body "http://a0340e77e14674adbb11ba17cf6384d8-1700619956.us-east-1.elb.amazonaws.com"
+```
+
+Depois desse cadastro, o workflow manual `Infra K8s` com `action=apply` cria a rota `ANY /{proxy+}` no API Gateway.
+
+Validacao esperada apos o `apply`:
+
+```text
+POST /auth/cpf -> 200 com accessToken
+GET /api/ordens-servico/cliente/{clienteId} com Bearer token -> 200
+GET /api/ordens-servico/cliente/{clienteId} sem token -> 401
+GET /api/ordens-servico/cliente/{outroClienteId} com Bearer token de outro cliente -> 403
+```
+
+Quando `/auth/cpf` funciona mas chamadas para `/api/...` retornam:
+
+```json
+{
+  "message": "Not Found"
+}
+```
+
+o API Gateway ainda nao possui a rota proxy da aplicacao. A correcao operacional e confirmar `API_BACKEND_URL` no environment e executar novo `apply` da infraestrutura K8s.
+
+Quando a chamada direta ao LoadBalancer retorna `200`, mas a mesma rota via API Gateway retorna `404` da aplicacao, a causa esperada e ausencia do parameter mapping de path na integracao HTTP proxy. O Terraform aplica:
+
+```hcl
+request_parameters = {
+  "overwrite:path" = "/$request.path.proxy"
+}
 ```
 
 ## State Terraform
