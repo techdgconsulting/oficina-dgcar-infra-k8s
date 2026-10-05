@@ -332,7 +332,7 @@ resource "aws_apigatewayv2_stage" "default" {
 }
 
 resource "aws_apigatewayv2_integration" "app" {
-  count = var.enable_api_gateway && var.api_backend_url != null ? 1 : 0
+  count = var.enable_api_gateway && var.api_backend_url != null && trimspace(var.api_backend_url) != "" ? 1 : 0
 
   api_id                 = aws_apigatewayv2_api.main[0].id
   integration_type       = "HTTP_PROXY"
@@ -342,7 +342,7 @@ resource "aws_apigatewayv2_integration" "app" {
 }
 
 resource "aws_apigatewayv2_route" "app_proxy" {
-  count = var.enable_api_gateway && var.api_backend_url != null ? 1 : 0
+  count = var.enable_api_gateway && var.api_backend_url != null && trimspace(var.api_backend_url) != "" ? 1 : 0
 
   api_id    = aws_apigatewayv2_api.main[0].id
   route_key = "ANY /{proxy+}"
