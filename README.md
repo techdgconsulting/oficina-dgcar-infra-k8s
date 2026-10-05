@@ -49,6 +49,25 @@ Entradas esperadas de outros repositorios:
 - `api_backend_url`, endpoint HTTP da aplicacao exposta no Kubernetes;
 - dados de conexao do banco, produzidos por `oficina-dgcar-infra-db`, aplicados via Secret/ConfigMap.
 
+## API Gateway
+
+O API Gateway HTTP e criado como entrada oficial da solucao.
+
+Integracoes configuradas:
+
+- rota `POST /auth/cpf`, integrada a Lambda de autenticacao por CPF quando `AUTH_LAMBDA_INVOKE_ARN` e `AUTH_LAMBDA_FUNCTION_NAME` existem;
+- rota `ANY /{proxy+}`, integrada ao backend da aplicacao quando `API_BACKEND_URL` existe.
+
+`API_BACKEND_URL` foi tratado como entrada opcional. Quando o valor esta ausente ou vazio, a integracao HTTP da aplicacao nao e criada. Esse comportamento permite provisionar primeiro a infraestrutura base de VPC, EKS, ECR e API Gateway, antes da aplicacao principal estar exposta em Kubernetes.
+
+Fluxo aplicado:
+
+1. Primeiro `apply`: cria rede, EKS, ECR e API Gateway sem rota proxy da aplicacao quando `API_BACKEND_URL` esta vazio.
+2. Deploy da aplicacao: publica o backend HTTP da API em Kubernetes.
+3. Novo `apply`: cria ou atualiza a rota `ANY /{proxy+}` apontando para `API_BACKEND_URL`.
+
+Da mesma forma, a rota `POST /auth/cpf` so e integrada quando os outputs da Lambda ja foram publicados pelo repositorio `oficina-dgcar-auth-lambda`.
+
 ## State Terraform
 
 O backend remoto usa S3 com lockfile nativo:
