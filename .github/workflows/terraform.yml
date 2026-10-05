@@ -150,4 +150,5 @@ jobs:
           TF_VAR_api_backend_url: ${{ secrets.API_BACKEND_URL }}
           TF_VAR_auth_lambda_invoke_arn: ${{ secrets.AUTH_LAMBDA_INVOKE_ARN }}
           TF_VAR_auth_lambda_function_name: ${{ secrets.AUTH_LAMBDA_FUNCTION_NAME }}
+          TF_VAR_github_actions_iam_user_arn: ${{ secrets.GH_ACTIONS_IAM_USER_ARN }}
         run: terraform apply -auto-approve
