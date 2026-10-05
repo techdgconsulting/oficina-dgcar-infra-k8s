@@ -1,3 +1,7 @@
+data "aws_caller_identity" "current" {
+  count = var.enable_api_gateway && var.auth_lambda_function_name != null && trimspace(var.auth_lambda_function_name) != "" ? 1 : 0
+}
+
 locals {
   name = "${var.project_name}-${var.environment}"
   azs  = var.availability_zones
@@ -373,5 +377,5 @@ resource "aws_lambda_permission" "allow_api_gateway_auth" {
   action        = "lambda:InvokeFunction"
   function_name = var.auth_lambda_function_name
   principal     = "apigateway.amazonaws.com"
-  source_arn    = "${aws_apigatewayv2_api.main[0].execution_arn}/*/*"
+  source_arn    = "arn:aws:execute-api:${var.aws_region}:${data.aws_caller_identity.current[0].account_id}:${aws_apigatewayv2_api.main[0].id}/*/*"
 }
