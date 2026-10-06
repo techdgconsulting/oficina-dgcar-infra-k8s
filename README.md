@@ -75,15 +75,16 @@ Fluxo aplicado:
 2. Deploy da aplicacao: publica o backend HTTP da API em Kubernetes.
 3. Novo `apply`: cria ou atualiza a rota `ANY /{proxy+}` apontando para `API_BACKEND_URL`.
 
-Da mesma forma, a rota `POST /auth/cpf` so e integrada quando os outputs da Lambda ja foram publicados pelo repositorio `oficina-dgcar-auth-lambda`.
+Da mesma forma, a rota `POST /auth/cpf` e uma integracao progressiva. Ela passa a ser criada quando os outputs da Lambda sao publicados pelo repositorio `oficina-dgcar-auth-lambda`.
+
+O workflow de `apply` trata `AUTH_LAMBDA_INVOKE_ARN` e `AUTH_LAMBDA_FUNCTION_NAME` como entradas opcionais durante o provisionamento base. Sem esses outputs confirmados, o Terraform cria a infraestrutura de rede, EKS, ECR e API Gateway sem a rota `POST /auth/cpf`. Depois que `oficina-dgcar-auth-lambda` executa `apply-infra` e publica os outputs, um novo `apply` deste repositorio cria a integracao do API Gateway com a Lambda.
 
 Permissao de invocacao da Lambda:
 
 - a rota `POST /auth/cpf` usa integracao `AWS_PROXY` com a Lambda Auth CPF;
-- a permissao `lambda:InvokeFunction` foi criada com `SourceArn` explicito no formato `arn:aws:execute-api:<regiao>:<account-id>:<api-id>/*/*`;
-- esse formato garante que o API Gateway consiga invocar a Lambda no mesmo account AWS;
-- quando o `SourceArn` fica sem `account-id`, a chamada pode retornar `500 Internal Server Error` no API Gateway sem gerar logs de execucao na Lambda;
-- apos alteracao dessa permissao, o `apply` do Terraform em `homolog` atualiza a policy da Lambda e a rota `POST /auth/cpf` passa a encaminhar chamadas para a funcao.
+- a permissao `lambda:InvokeFunction` usa `SourceArn` explicito no formato `arn:aws:execute-api:<regiao>:<account-id>:<api-id>/*/*`;
+- esse formato vincula a permissao ao API Gateway da mesma conta AWS;
+- o `apply` do Terraform atualiza a policy da Lambda quando os outputs da funcao estao disponiveis.
 
 Endpoint homolog atual:
 
@@ -138,7 +139,7 @@ Quando `/auth/cpf` funciona mas chamadas para `/api/...` retornam:
 }
 ```
 
-o API Gateway ainda nao possui a rota proxy da aplicacao. A correcao operacional e confirmar `API_BACKEND_URL` no environment e executar novo `apply` da infraestrutura K8s.
+Enquanto `API_BACKEND_URL` nao esta configurado no environment, o API Gateway permanece sem a rota proxy da aplicacao. Depois que a API publica o LoadBalancer, um novo `apply` deste repositorio cria a integracao `ANY /{proxy+}`.
 
 Quando a chamada direta ao LoadBalancer retorna `200`, mas a mesma rota via API Gateway retorna `404` da aplicacao, a causa esperada e ausencia do parameter mapping de path na integracao HTTP proxy. O Terraform aplica:
 
@@ -294,13 +295,7 @@ aws eks list-associated-access-policies \
   --principal-arn arn:aws:iam::857145323352:user/16soat-tf
 ```
 
-O erro abaixo indica ausencia desse access entry ou da policy associada:
-
-```text
-failed to download openapi: the server has asked for the client to provide credentials
-```
-
-Correcao aplicada em `homolog`:
+O acesso do GitHub Actions ao Kubernetes depende de access entry e policy associada no EKS. Configuracao aplicada em `homolog`:
 
 - access entry criado para `arn:aws:iam::857145323352:user/16soat-tf`;
 - policy `AmazonEKSClusterAdminPolicy` associada em escopo `cluster`;
