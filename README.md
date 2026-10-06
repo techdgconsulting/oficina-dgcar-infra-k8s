@@ -238,11 +238,12 @@ O destroy deste repositorio nao remove recursos que pertencem a outros repositor
 Para teardown completo do ambiente academico, a ordem operacional aplicada e:
 
 1. remover workloads da aplicacao no repo `oficina-dgcar-api`, evitando Services `LoadBalancer` e pods consumindo recursos do cluster;
-2. executar destroy da Lambda no repo `oficina-dgcar-auth-lambda`, removendo Function, Log Group, IAM e security group da Lambda;
-3. executar `Destroy Infra K8s` neste repositorio para finalizar EKS, API Gateway, ECR, VPC, subnets, rotas e recursos auxiliares criados pelo Kubernetes;
-4. executar destroy do banco em `oficina-dgcar-infra-db`, removendo o RDS PostgreSQL por ultimo.
+2. executar `destroy-infra` no repo `oficina-dgcar-auth-lambda`, removendo Function, Log Group, IAM e security group da Lambda;
+3. executar `destroy` no repo `oficina-dgcar-infra-db`, removendo RDS PostgreSQL, subnet group e security group do banco;
+4. aguardar alguns minutos para a AWS liberar as ENIs gerenciadas da Lambda e do RDS;
+5. executar `Destroy Infra K8s` neste repositorio para finalizar EKS, API Gateway, ECR, VPC, subnets, rotas e recursos auxiliares criados pelo Kubernetes.
 
-Essa ordem evita falhas por dependencia entre Load Balancers, security groups, subnets, Lambda, API Gateway e RDS. O banco fica por ultimo porque API e Lambda dependem dele durante os testes funcionais.
+Essa ordem evita falhas por dependencia entre Load Balancers, security groups, subnets, Lambda, API Gateway e RDS. A rede fica por ultimo porque as subnets so podem ser removidas depois que as ENIs gerenciadas da Lambda e do RDS deixam de existir.
 
 ## Sequencia Completa De Provisionamento
 
