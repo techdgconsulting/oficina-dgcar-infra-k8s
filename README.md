@@ -236,12 +236,27 @@ O destroy deste repositorio nao remove recursos que pertencem a outros repositor
 
 Para teardown completo do ambiente academico, a ordem operacional aplicada e:
 
-1. remover ou desacoplar dependencias da Lambda quando houver security group preso na VPC;
-2. executar destroy do banco em `oficina-dgcar-infra-db`;
-3. executar destroy da Lambda em `oficina-dgcar-auth-lambda`;
-4. executar `Destroy Infra K8s` neste repositorio para finalizar EKS, API Gateway, ECR e VPC.
+1. remover workloads da aplicacao no repo `oficina-dgcar-api`, evitando Services `LoadBalancer` e pods consumindo recursos do cluster;
+2. executar destroy da Lambda no repo `oficina-dgcar-auth-lambda`, removendo Function, Log Group, IAM e security group da Lambda;
+3. executar `Destroy Infra K8s` neste repositorio para finalizar EKS, API Gateway, ECR, VPC, subnets, rotas e recursos auxiliares criados pelo Kubernetes;
+4. executar destroy do banco em `oficina-dgcar-infra-db`, removendo o RDS PostgreSQL por ultimo.
 
-Essa ordem evita falhas por dependencia entre security groups, subnets, RDS, Lambda e Load Balancers criados pelo Kubernetes.
+Essa ordem evita falhas por dependencia entre Load Balancers, security groups, subnets, Lambda, API Gateway e RDS. O banco fica por ultimo porque API e Lambda dependem dele durante os testes funcionais.
+
+## Sequencia Completa De Provisionamento
+
+A criacao completa do ambiente AWS em `homolog` segue esta ordem:
+
+1. `oficina-dgcar-infra-k8s`: executar `Infra K8s` com `action=apply` para criar rede, EKS, ECR e API Gateway base.
+2. `oficina-dgcar-infra-db`: executar `Infra DB` com `action=apply` para criar o RDS PostgreSQL na rede publicada pelo repo Kubernetes.
+3. `oficina-dgcar-auth-lambda`: executar `Auth CPF Lambda` com `action=apply-infra` para criar a Lambda Auth CPF + Senha.
+4. `oficina-dgcar-infra-db`: executar novo `apply` para liberar o PostgreSQL ao security group publicado pela Lambda.
+5. `oficina-dgcar-infra-k8s`: executar novo `apply` para criar ou atualizar a integracao `POST /auth/cpf` do API Gateway com a Lambda.
+6. `oficina-dgcar-auth-lambda`: executar `Auth CPF Lambda` com `action=deploy-code` para publicar o pacote da funcao.
+7. `oficina-dgcar-api`: executar `App CI/CD - Build, Test and Deploy` com `action=deploy` para publicar a aplicacao no EKS.
+8. `oficina-dgcar-infra-k8s`: executar novo `apply` quando `API_BACKEND_URL` estiver preenchido, criando a rota proxy `ANY /{proxy+}` para o backend Kubernetes.
+
+Essa sequencia foi definida porque os repositorios trocam outputs por GitHub Secrets/Variables. O Gateway depende dos outputs da Lambda e do endpoint HTTP da API; a Lambda depende dos outputs de rede e banco; o banco precisa conhecer o security group da Lambda para liberar a conexao PostgreSQL.
 
 ## Acesso Do GitHub Actions Ao EKS
 
