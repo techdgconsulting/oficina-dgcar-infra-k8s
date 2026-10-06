@@ -77,6 +77,8 @@ Fluxo aplicado:
 
 Da mesma forma, a rota `POST /auth/cpf` so e integrada quando os outputs da Lambda ja foram publicados pelo repositorio `oficina-dgcar-auth-lambda`.
 
+O workflow de `apply` valida a existencia da Lambda antes de passar `AUTH_LAMBDA_INVOKE_ARN` e `AUTH_LAMBDA_FUNCTION_NAME` ao Terraform. Quando os secrets ainda nao existem, estao vazios ou apontam para uma funcao inexistente na conta/regiao, o apply segue sem criar a rota `POST /auth/cpf`. Depois que `oficina-dgcar-auth-lambda` executa `apply-infra` e publica os outputs corretos, um novo `apply` deste repositorio cria a integracao do API Gateway com a Lambda.
+
 Permissao de invocacao da Lambda:
 
 - a rota `POST /auth/cpf` usa integracao `AWS_PROXY` com a Lambda Auth CPF;
