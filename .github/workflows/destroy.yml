@@ -1,0 +1,187 @@
+name: Destroy Infra K8s
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment"
+        required: true
+        default: "homolog"
+        type: choice
+        options:
+          - homolog
+          - prod
+      confirm_destroy:
+        description: "Type DESTROY to confirm the teardown"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  destroy:
+    name: destroy
+    if: inputs.confirm_destroy == 'DESTROY'
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.15.8
+          terraform_wrapper: false
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION || 'us-east-1' }}
+
+      - name: Terraform init with remote state
+        working-directory: terraform
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
+            -backend-config="key=${{ secrets.TF_STATE_KEY }}" \
+            -backend-config="region=${{ secrets.AWS_REGION || 'us-east-1' }}" \
+            -backend-config="use_lockfile=true"
+
+      - name: Read Terraform outputs for cleanup
+        id: tf_outputs
+        working-directory: terraform
+        env:
+          TF_VAR_environment: ${{ inputs.environment }}
+          TF_VAR_api_backend_url: ${{ secrets.API_BACKEND_URL || '' }}
+          TF_VAR_auth_lambda_invoke_arn: ${{ secrets.AUTH_LAMBDA_INVOKE_ARN || '' }}
+          TF_VAR_auth_lambda_function_name: ${{ secrets.AUTH_LAMBDA_FUNCTION_NAME || '' }}
+        run: |
+          set +e
+          VPC_ID="$(terraform output -raw vpc_id 2>/dev/null)"
+          EKS_CLUSTER_NAME="$(terraform output -raw eks_cluster_name 2>/dev/null)"
+          set -e
+
+          echo "vpc_id=${VPC_ID}" >> "$GITHUB_OUTPUT"
+          echo "eks_cluster_name=${EKS_CLUSTER_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Remove Kubernetes workloads created by the application
+        if: steps.tf_outputs.outputs.eks_cluster_name != ''
+        env:
+          AWS_REGION: ${{ secrets.AWS_REGION || 'us-east-1' }}
+          EKS_CLUSTER_NAME: ${{ steps.tf_outputs.outputs.eks_cluster_name }}
+        run: |
+          set +e
+          aws eks describe-cluster \
+            --region "$AWS_REGION" \
+            --name "$EKS_CLUSTER_NAME" >/dev/null 2>&1
+          CLUSTER_EXISTS="$?"
+          set -e
+
+          if [ "$CLUSTER_EXISTS" -ne 0 ]; then
+            echo "EKS cluster not found. Skipping Kubernetes cleanup."
+            exit 0
+          fi
+
+          aws eks update-kubeconfig \
+            --region "$AWS_REGION" \
+            --name "$EKS_CLUSTER_NAME"
+
+          kubectl delete service oficina-api -n oficina --ignore-not-found=true --timeout=5m
+          kubectl delete deployment oficina-api -n oficina --ignore-not-found=true --timeout=5m
+          kubectl delete hpa oficina-api -n oficina --ignore-not-found=true --timeout=5m
+          kubectl delete configmap oficina-api-config -n oficina --ignore-not-found=true --timeout=5m
+          kubectl delete secret oficina-api-secret -n oficina --ignore-not-found=true --timeout=5m
+          kubectl delete namespace oficina --ignore-not-found=true --timeout=5m
+
+      - name: Remove AWS load balancers created by Kubernetes
+        if: steps.tf_outputs.outputs.vpc_id != ''
+        env:
+          AWS_REGION: ${{ secrets.AWS_REGION || 'us-east-1' }}
+          VPC_ID: ${{ steps.tf_outputs.outputs.vpc_id }}
+        run: |
+          set +e
+
+          CLASSIC_LBS="$(aws elb describe-load-balancers \
+            --region "$AWS_REGION" \
+            --query "LoadBalancerDescriptions[?VPCId=='${VPC_ID}'].LoadBalancerName" \
+            --output text)"
+
+          for LB_NAME in $CLASSIC_LBS; do
+            echo "Deleting Classic Load Balancer: $LB_NAME"
+            aws elb delete-load-balancer \
+              --region "$AWS_REGION" \
+              --load-balancer-name "$LB_NAME"
+          done
+
+          V2_LBS="$(aws elbv2 describe-load-balancers \
+            --region "$AWS_REGION" \
+            --query "LoadBalancers[?VpcId=='${VPC_ID}'].LoadBalancerArn" \
+            --output text)"
+
+          for LB_ARN in $V2_LBS; do
+            echo "Deleting ELBv2 Load Balancer: $LB_ARN"
+            aws elbv2 delete-load-balancer \
+              --region "$AWS_REGION" \
+              --load-balancer-arn "$LB_ARN"
+          done
+
+          sleep 60
+          set -e
+
+      - name: Terraform destroy
+        working-directory: terraform
+        continue-on-error: true
+        env:
+          TF_VAR_environment: ${{ inputs.environment }}
+          TF_VAR_api_backend_url: ${{ secrets.API_BACKEND_URL || '' }}
+          TF_VAR_auth_lambda_invoke_arn: ${{ secrets.AUTH_LAMBDA_INVOKE_ARN || '' }}
+          TF_VAR_auth_lambda_function_name: ${{ secrets.AUTH_LAMBDA_FUNCTION_NAME || '' }}
+        run: terraform destroy -auto-approve
+
+      - name: Remove orphan Kubernetes security groups
+        if: always() && steps.tf_outputs.outputs.vpc_id != ''
+        env:
+          AWS_REGION: ${{ secrets.AWS_REGION || 'us-east-1' }}
+          VPC_ID: ${{ steps.tf_outputs.outputs.vpc_id }}
+        run: |
+          set +e
+
+          ORPHAN_SGS="$(aws ec2 describe-security-groups \
+            --region "$AWS_REGION" \
+            --filters "Name=vpc-id,Values=${VPC_ID}" \
+            --query "SecurityGroups[?starts_with(GroupName, 'k8s-elb-') || contains(Description, 'Kubernetes ELB')].GroupId" \
+            --output text)"
+
+          for SG_ID in $ORPHAN_SGS; do
+            ENIS="$(aws ec2 describe-network-interfaces \
+              --region "$AWS_REGION" \
+              --filters "Name=group-id,Values=${SG_ID}" \
+              --query "NetworkInterfaces[*].NetworkInterfaceId" \
+              --output text)"
+
+            if [ -z "$ENIS" ]; then
+              echo "Deleting orphan Kubernetes security group: $SG_ID"
+              aws ec2 delete-security-group \
+                --region "$AWS_REGION" \
+                --group-id "$SG_ID"
+            else
+              echo "Security group $SG_ID still has ENIs: $ENIS"
+            fi
+          done
+
+          set -e
+
+      - name: Retry Terraform destroy after orphan cleanup
+        if: always()
+        working-directory: terraform
+        env:
+          TF_VAR_environment: ${{ inputs.environment }}
+          TF_VAR_api_backend_url: ${{ secrets.API_BACKEND_URL || '' }}
+          TF_VAR_auth_lambda_invoke_arn: ${{ secrets.AUTH_LAMBDA_INVOKE_ARN || '' }}
+          TF_VAR_auth_lambda_function_name: ${{ secrets.AUTH_LAMBDA_FUNCTION_NAME || '' }}
+        run: terraform destroy -auto-approve
