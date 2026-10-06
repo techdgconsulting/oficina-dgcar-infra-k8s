@@ -184,6 +184,57 @@ Apply real e disparado manualmente por `workflow_dispatch`, usando `action=apply
 
 Depois do `terraform apply`, o workflow publica automaticamente os outputs de rede nos repos dependentes.
 
+## Destroy Manual Do Ambiente Academico
+
+Foi criada a action `Destroy Infra K8s` para desligar a infraestrutura deste repositorio apos validacoes academicas e evitar custo recorrente na AWS.
+
+Essa automacao e manual, protegida por environment e exige confirmacao textual antes de executar qualquer remocao.
+
+Execucao no GitHub:
+
+1. Acessar `Actions`.
+2. Selecionar `Destroy Infra K8s`.
+3. Acionar `Run workflow`.
+4. Escolher o environment `homolog` ou `prod`.
+5. Preencher `confirm_destroy` com o valor exato `DESTROY`.
+6. Aprovar o deployment no environment selecionado.
+
+O workflow executa:
+
+- leitura do state remoto Terraform em S3;
+- obtencao dos outputs `vpc_id` e `eks_cluster_name`;
+- remocao dos recursos Kubernetes da aplicacao no namespace `oficina`;
+- remocao de Load Balancers Classic e ELBv2 criados pelo Kubernetes dentro da VPC;
+- execucao de `terraform destroy`;
+- remocao de security groups orfaos criados por Services Kubernetes do tipo `LoadBalancer`;
+- nova tentativa de `terraform destroy` para concluir a exclusao de subnets, internet gateway e VPC apos a limpeza de dependencias.
+
+Esse fluxo cobre os recursos deste repositorio:
+
+- EKS;
+- node group;
+- ECR;
+- API Gateway;
+- VPC, subnets, route tables, NAT/Internet Gateway e security groups gerenciados pelo Terraform;
+- recursos auxiliares criados pelo Kubernetes que impedem a exclusao completa da VPC quando ficam orfaos.
+
+A action nao e executada em push, Pull Request ou merge. O destroy real so ocorre por `workflow_dispatch`, com `confirm_destroy=DESTROY` e aprovacao do GitHub Environment.
+
+O destroy deste repositorio nao remove recursos que pertencem a outros repositorios:
+
+- RDS PostgreSQL fica sob responsabilidade de `oficina-dgcar-infra-db`;
+- Lambda Auth CPF, IAM Role e Log Group da Lambda ficam sob responsabilidade de `oficina-dgcar-auth-lambda`;
+- imagem e deploy da aplicacao ficam sob responsabilidade de `oficina-dgcar-api`.
+
+Para teardown completo do ambiente academico, a ordem operacional aplicada e:
+
+1. remover ou desacoplar dependencias da Lambda quando houver security group preso na VPC;
+2. executar destroy do banco em `oficina-dgcar-infra-db`;
+3. executar destroy da Lambda em `oficina-dgcar-auth-lambda`;
+4. executar `Destroy Infra K8s` neste repositorio para finalizar EKS, API Gateway, ECR e VPC.
+
+Essa ordem evita falhas por dependencia entre security groups, subnets, RDS, Lambda e Load Balancers criados pelo Kubernetes.
+
 ## Acesso Do GitHub Actions Ao EKS
 
 O EKS usa access entries para autorizar o principal IAM que executa `kubectl` nos workflows.
