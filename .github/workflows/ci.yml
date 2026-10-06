@@ -124,16 +124,16 @@ jobs:
           echo "function_name=" >> "$GITHUB_OUTPUT"
 
           if [ -z "$AUTH_LAMBDA_INVOKE_ARN" ] || [ -z "$AUTH_LAMBDA_FUNCTION_NAME" ]; then
-            echo "Lambda Auth CPF + Senha ainda nao publicada. O apply seguira sem a rota POST /auth/cpf."
+            echo "Outputs da Lambda Auth CPF + Senha nao informados. Provisionamento base seguira sem a rota POST /auth/cpf."
             exit 0
           fi
 
           if aws lambda get-function --function-name "$AUTH_LAMBDA_FUNCTION_NAME" >/dev/null 2>&1; then
             echo "invoke_arn=$AUTH_LAMBDA_INVOKE_ARN" >> "$GITHUB_OUTPUT"
             echo "function_name=$AUTH_LAMBDA_FUNCTION_NAME" >> "$GITHUB_OUTPUT"
-            echo "Lambda Auth CPF + Senha encontrada. O API Gateway sera integrado a funcao."
+            echo "Outputs da Lambda Auth CPF + Senha confirmados. O API Gateway sera integrado a funcao."
           else
-            echo "::warning::AUTH_LAMBDA_FUNCTION_NAME aponta para uma Lambda inexistente nesta conta/regiao. O apply seguira sem a rota POST /auth/cpf."
+            echo "Outputs da Lambda Auth CPF + Senha ainda nao confirmados na AWS. Provisionamento base seguira sem a rota POST /auth/cpf."
           fi
 
       - name: Terraform apply
