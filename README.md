@@ -267,9 +267,10 @@ Foi configurado no environment `homolog` o secret:
 
 ```text
 GH_ACTIONS_IAM_USER_ARN=arn:aws:iam::857145323352:user/16soat-tf
+GH_ACTIONS_IAM_USER_NAME=16soat-tf
 ```
 
-Esse ARN e passado para o Terraform como `TF_VAR_github_actions_iam_user_arn` durante `plan` e `apply`.
+Esses valores sao passados para o Terraform durante `plan` e `apply`. Quando `GH_ACTIONS_IAM_USER_ARN` existe no environment, o workflow habilita a criacao do acesso Kubernetes para o principal IAM usado pelas esteiras.
 
 Recursos Terraform responsaveis:
 
