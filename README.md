@@ -25,6 +25,14 @@ Este repositorio provisiona e documenta a infraestrutura de execucao da aplicaca
 - Kustomize;
 - GitHub Actions.
 
+## Documentacao Central
+
+A documentacao arquitetural completa do Tech Challenge 3 esta centralizada em:
+
+[oficina-dgcar-docs](https://github.com/techdgconsulting/oficina-dgcar-docs)
+
+Este repositorio mantem apenas a documentacao especifica da infraestrutura Kubernetes, registry, API Gateway, manifests, pipeline e deploy de borda.
+
 ## Separacao De Responsabilidades
 
 Este repositorio nao provisiona o RDS PostgreSQL e nao contem codigo da aplicacao Java ou da Lambda.
