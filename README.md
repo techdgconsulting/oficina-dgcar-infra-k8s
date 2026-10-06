@@ -248,16 +248,17 @@ Essa ordem evita falhas por dependencia entre Load Balancers, security groups, s
 
 A criacao completa do ambiente AWS em `homolog` segue esta ordem:
 
-1. `oficina-dgcar-infra-k8s`: executar `Infra K8s` com `action=apply` para criar rede, EKS, ECR e API Gateway base.
+1. `oficina-dgcar-infra-k8s`: executar `Infra K8s` com `action=apply` para criar rede, EKS, ECR e API Gateway base, ainda sem rotas dependentes da Lambda ou da aplicacao.
 2. `oficina-dgcar-infra-db`: executar `Infra DB` com `action=apply` para criar o RDS PostgreSQL na rede publicada pelo repo Kubernetes.
-3. `oficina-dgcar-auth-lambda`: executar `Auth CPF Lambda` com `action=apply-infra` para criar a Lambda Auth CPF + Senha.
+3. `oficina-dgcar-auth-lambda`: executar `Auth CPF Lambda` com `action=apply-infra` para criar a Lambda Auth CPF + Senha, IAM, Log Group e security group.
 4. `oficina-dgcar-infra-db`: executar novo `apply` para liberar o PostgreSQL ao security group publicado pela Lambda.
-5. `oficina-dgcar-infra-k8s`: executar novo `apply` para criar ou atualizar a integracao `POST /auth/cpf` do API Gateway com a Lambda.
-6. `oficina-dgcar-auth-lambda`: executar `Auth CPF Lambda` com `action=deploy-code` para publicar o pacote da funcao.
+5. `oficina-dgcar-auth-lambda`: executar `Auth CPF Lambda` com `action=deploy-code` para publicar o pacote da funcao.
+6. `oficina-dgcar-infra-k8s`: executar novo `apply` para criar ou atualizar a integracao `POST /auth/cpf` do API Gateway com a Lambda.
 7. `oficina-dgcar-api`: executar `App CI/CD - Build, Test and Deploy` com `action=deploy` para publicar a aplicacao no EKS.
-8. `oficina-dgcar-infra-k8s`: executar novo `apply` quando `API_BACKEND_URL` estiver preenchido, criando a rota proxy `ANY /{proxy+}` para o backend Kubernetes.
+8. `oficina-dgcar-infra-k8s`: registrar `API_BACKEND_URL` no environment `homolog` com o endpoint HTTP publicado pelo Service da API.
+9. `oficina-dgcar-infra-k8s`: executar novo `apply` para criar a rota proxy `ANY /{proxy+}` apontando para o backend Kubernetes.
 
-Essa sequencia foi definida porque os repositorios trocam outputs por GitHub Secrets/Variables. O Gateway depende dos outputs da Lambda e do endpoint HTTP da API; a Lambda depende dos outputs de rede e banco; o banco precisa conhecer o security group da Lambda para liberar a conexao PostgreSQL.
+Essa sequencia foi definida porque os repositorios trocam outputs por GitHub Secrets/Variables. A Lambda depende dos outputs de rede e banco; o banco precisa conhecer o security group da Lambda para liberar a conexao PostgreSQL; o Gateway depende dos outputs da Lambda para `/auth/cpf`; e a rota proxy da API depende do endpoint HTTP publicado depois do deploy da aplicacao.
 
 ## Acesso Do GitHub Actions Ao EKS
 
