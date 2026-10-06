@@ -72,6 +72,9 @@ jobs:
           TF_VAR_api_backend_url: ${{ secrets.API_BACKEND_URL || '' }}
           TF_VAR_auth_lambda_invoke_arn: ${{ secrets.AUTH_LAMBDA_INVOKE_ARN || '' }}
           TF_VAR_auth_lambda_function_name: ${{ secrets.AUTH_LAMBDA_FUNCTION_NAME || '' }}
+          TF_VAR_enable_github_actions_eks_access: ${{ secrets.GH_ACTIONS_IAM_USER_ARN != '' && 'true' || 'false' }}
+          TF_VAR_github_actions_iam_user_arn: ${{ secrets.GH_ACTIONS_IAM_USER_ARN || '' }}
+          TF_VAR_github_actions_iam_user_name: ${{ secrets.GH_ACTIONS_IAM_USER_NAME || 'github-actions-oficina-dgcar' }}
         run: terraform plan -refresh=false
 
       - name: Validate Kubernetes manifests
@@ -143,6 +146,9 @@ jobs:
           TF_VAR_api_backend_url: ${{ secrets.API_BACKEND_URL || '' }}
           TF_VAR_auth_lambda_invoke_arn: ${{ steps.lambda_integration.outputs.invoke_arn }}
           TF_VAR_auth_lambda_function_name: ${{ steps.lambda_integration.outputs.function_name }}
+          TF_VAR_enable_github_actions_eks_access: ${{ secrets.GH_ACTIONS_IAM_USER_ARN != '' && 'true' || 'false' }}
+          TF_VAR_github_actions_iam_user_arn: ${{ secrets.GH_ACTIONS_IAM_USER_ARN || '' }}
+          TF_VAR_github_actions_iam_user_name: ${{ secrets.GH_ACTIONS_IAM_USER_NAME || 'github-actions-oficina-dgcar' }}
         run: terraform apply -auto-approve
 
       - name: Publish network outputs to dependent repositories
