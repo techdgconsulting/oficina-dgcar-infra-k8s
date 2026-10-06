@@ -1,10 +1,18 @@
 data "aws_caller_identity" "current" {
-  count = var.enable_api_gateway && var.auth_lambda_function_name != null && trimspace(var.auth_lambda_function_name) != "" ? 1 : 0
+  count = local.auth_lambda_enabled ? 1 : 0
 }
 
 locals {
   name = "${var.project_name}-${var.environment}"
   azs  = var.availability_zones
+
+  auth_lambda_enabled = (
+    var.enable_api_gateway &&
+    var.auth_lambda_invoke_arn != null &&
+    trimspace(var.auth_lambda_invoke_arn) != "" &&
+    var.auth_lambda_function_name != null &&
+    trimspace(var.auth_lambda_function_name) != ""
+  )
 }
 
 resource "aws_vpc" "main" {
@@ -358,7 +366,7 @@ resource "aws_apigatewayv2_route" "app_proxy" {
 }
 
 resource "aws_apigatewayv2_integration" "auth_lambda" {
-  count = var.enable_api_gateway && var.auth_lambda_invoke_arn != null && trimspace(var.auth_lambda_invoke_arn) != "" ? 1 : 0
+  count = local.auth_lambda_enabled ? 1 : 0
 
   api_id                 = aws_apigatewayv2_api.main[0].id
   integration_type       = "AWS_PROXY"
@@ -367,7 +375,7 @@ resource "aws_apigatewayv2_integration" "auth_lambda" {
 }
 
 resource "aws_apigatewayv2_route" "auth_cpf" {
-  count = var.enable_api_gateway && var.auth_lambda_invoke_arn != null && trimspace(var.auth_lambda_invoke_arn) != "" ? 1 : 0
+  count = local.auth_lambda_enabled ? 1 : 0
 
   api_id    = aws_apigatewayv2_api.main[0].id
   route_key = "POST /auth/cpf"
@@ -375,7 +383,7 @@ resource "aws_apigatewayv2_route" "auth_cpf" {
 }
 
 resource "aws_lambda_permission" "allow_api_gateway_auth" {
-  count = var.enable_api_gateway && var.auth_lambda_function_name != null && trimspace(var.auth_lambda_function_name) != "" ? 1 : 0
+  count = local.auth_lambda_enabled ? 1 : 0
 
   statement_id  = "AllowExecutionFromApiGateway"
   action        = "lambda:InvokeFunction"

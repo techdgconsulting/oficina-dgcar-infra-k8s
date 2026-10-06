@@ -112,13 +112,37 @@ jobs:
             -backend-config="region=${{ secrets.AWS_REGION || 'us-east-1' }}" \
             -backend-config="use_lockfile=true"
 
+      - name: Resolve optional Lambda integration
+        id: lambda_integration
+        env:
+          AUTH_LAMBDA_INVOKE_ARN: ${{ secrets.AUTH_LAMBDA_INVOKE_ARN || '' }}
+          AUTH_LAMBDA_FUNCTION_NAME: ${{ secrets.AUTH_LAMBDA_FUNCTION_NAME || '' }}
+        run: |
+          set -euo pipefail
+
+          echo "invoke_arn=" >> "$GITHUB_OUTPUT"
+          echo "function_name=" >> "$GITHUB_OUTPUT"
+
+          if [ -z "$AUTH_LAMBDA_INVOKE_ARN" ] || [ -z "$AUTH_LAMBDA_FUNCTION_NAME" ]; then
+            echo "Lambda Auth CPF + Senha ainda nao publicada. O apply seguira sem a rota POST /auth/cpf."
+            exit 0
+          fi
+
+          if aws lambda get-function --function-name "$AUTH_LAMBDA_FUNCTION_NAME" >/dev/null 2>&1; then
+            echo "invoke_arn=$AUTH_LAMBDA_INVOKE_ARN" >> "$GITHUB_OUTPUT"
+            echo "function_name=$AUTH_LAMBDA_FUNCTION_NAME" >> "$GITHUB_OUTPUT"
+            echo "Lambda Auth CPF + Senha encontrada. O API Gateway sera integrado a funcao."
+          else
+            echo "::warning::AUTH_LAMBDA_FUNCTION_NAME aponta para uma Lambda inexistente nesta conta/regiao. O apply seguira sem a rota POST /auth/cpf."
+          fi
+
       - name: Terraform apply
         working-directory: terraform
         env:
           TF_VAR_environment: ${{ inputs.environment }}
           TF_VAR_api_backend_url: ${{ secrets.API_BACKEND_URL || '' }}
-          TF_VAR_auth_lambda_invoke_arn: ${{ secrets.AUTH_LAMBDA_INVOKE_ARN || '' }}
-          TF_VAR_auth_lambda_function_name: ${{ secrets.AUTH_LAMBDA_FUNCTION_NAME || '' }}
+          TF_VAR_auth_lambda_invoke_arn: ${{ steps.lambda_integration.outputs.invoke_arn }}
+          TF_VAR_auth_lambda_function_name: ${{ steps.lambda_integration.outputs.function_name }}
         run: terraform apply -auto-approve
 
       - name: Publish network outputs to dependent repositories
