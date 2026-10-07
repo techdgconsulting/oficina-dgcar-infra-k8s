@@ -245,12 +245,12 @@ O destroy deste repositorio nao remove recursos que pertencem a outros repositor
 Para teardown completo do ambiente academico, a ordem operacional aplicada e:
 
 1. executar `Destroy Infra K8s` com `action=cleanup-workloads`, removendo workloads Kubernetes da aplicacao e Load Balancers publicados pelo Service `oficina-api`;
-2. executar `destroy-infra` no repo `oficina-dgcar-auth-lambda`, removendo Function, Log Group, IAM e security group da Lambda;
-3. executar `destroy` no repo `oficina-dgcar-infra-db`, removendo RDS PostgreSQL, subnet group e security group do banco;
+2. executar `destroy` no repo `oficina-dgcar-infra-db`, removendo RDS PostgreSQL, subnet group, security group do banco e a regra que referencia o security group da Lambda;
+3. executar `destroy-infra` no repo `oficina-dgcar-auth-lambda`, removendo Function, Log Group, IAM e security group da Lambda;
 4. aguardar alguns minutos para a AWS liberar as ENIs gerenciadas da Lambda e do RDS;
 5. executar `Destroy Infra K8s` com `action=destroy`, finalizando EKS, API Gateway, ECR, VPC, subnets, rotas e recursos auxiliares criados pelo Kubernetes.
 
-Essa ordem evita falhas por dependencia entre Load Balancers, security groups, subnets, Lambda, API Gateway e RDS. A rede fica por ultimo porque as subnets so podem ser removidas depois que as ENIs gerenciadas da Lambda e do RDS deixam de existir.
+Essa ordem evita falhas por dependencia entre Load Balancers, security groups, subnets, Lambda, API Gateway e RDS. O banco sai antes da Lambda porque o security group do RDS referencia o security group da Lambda como origem autorizada para PostgreSQL. A rede fica por ultimo porque as subnets so podem ser removidas depois que as ENIs gerenciadas da Lambda e do RDS deixam de existir.
 
 ## Sequencia Completa De Provisionamento
 
