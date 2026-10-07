@@ -1,4 +1,4 @@
-name: Infra K8s
+name: Validar Infra K8s
 
 on:
   pull_request:
@@ -9,31 +9,13 @@ on:
     branches:
       - main
       - homolog
-  workflow_dispatch:
-    inputs:
-      action:
-        description: "Action to run"
-        required: true
-        default: "plan"
-        type: choice
-        options:
-          - plan
-          - apply
-      environment:
-        description: "Target environment"
-        required: true
-        default: "homolog"
-        type: choice
-        options:
-          - homolog
-          - prod
 
 permissions:
   contents: read
 
 jobs:
   validate:
-    name: validate
+    name: validar terraform e manifests
     runs-on: ubuntu-latest
 
     steps:
@@ -65,16 +47,16 @@ jobs:
       - name: Terraform plan without refresh
         working-directory: terraform
         env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID || 'test' }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY || 'test' }}
-          AWS_REGION: ${{ secrets.AWS_REGION || 'us-east-1' }}
-          TF_VAR_environment: ${{ (github.base_ref || github.ref_name) == 'main' && 'prod' || 'homolog' }}
-          TF_VAR_api_backend_url: ${{ secrets.API_BACKEND_URL || '' }}
-          TF_VAR_auth_lambda_invoke_arn: ${{ secrets.AUTH_LAMBDA_INVOKE_ARN || '' }}
-          TF_VAR_auth_lambda_function_name: ${{ secrets.AUTH_LAMBDA_FUNCTION_NAME || '' }}
-          TF_VAR_enable_github_actions_eks_access: ${{ secrets.GH_ACTIONS_IAM_USER_ARN != '' && 'true' || 'false' }}
-          TF_VAR_github_actions_iam_user_arn: ${{ secrets.GH_ACTIONS_IAM_USER_ARN || '' }}
-          TF_VAR_github_actions_iam_user_name: ${{ secrets.GH_ACTIONS_IAM_USER_NAME || 'github-actions-oficina-dgcar' }}
+          AWS_ACCESS_KEY_ID: test
+          AWS_SECRET_ACCESS_KEY: test
+          AWS_REGION: us-east-1
+          TF_VAR_environment: homolog
+          TF_VAR_api_backend_url: ""
+          TF_VAR_auth_lambda_invoke_arn: ""
+          TF_VAR_auth_lambda_function_name: ""
+          TF_VAR_enable_github_actions_eks_access: "true"
+          TF_VAR_github_actions_iam_user_arn: arn:aws:iam::123456789012:user/github-actions-oficina-dgcar
+          TF_VAR_github_actions_iam_user_name: github-actions-oficina-dgcar
         run: terraform plan -refresh=false
 
       - name: Validate Kubernetes manifests
@@ -82,91 +64,5 @@ jobs:
           kubectl kustomize k8s > rendered-k8s.yaml
           test -s rendered-k8s.yaml
 
-  apply:
-    name: apply
-    if: github.event_name == 'workflow_dispatch' && inputs.action == 'apply'
-    needs: validate
-    runs-on: ubuntu-latest
-    environment: ${{ inputs.environment }}
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: 1.15.8
-          terraform_wrapper: false
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION || 'us-east-1' }}
-
-      - name: Terraform init with remote state
-        working-directory: terraform
-        run: |
-          terraform init \
-            -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
-            -backend-config="key=${{ secrets.TF_STATE_KEY }}" \
-            -backend-config="region=${{ secrets.AWS_REGION || 'us-east-1' }}" \
-            -backend-config="use_lockfile=true"
-
-      - name: Resolve optional Lambda integration
-        id: lambda_integration
-        env:
-          AUTH_LAMBDA_INVOKE_ARN: ${{ secrets.AUTH_LAMBDA_INVOKE_ARN || '' }}
-          AUTH_LAMBDA_FUNCTION_NAME: ${{ secrets.AUTH_LAMBDA_FUNCTION_NAME || '' }}
-        run: |
-          set -euo pipefail
-
-          echo "invoke_arn=" >> "$GITHUB_OUTPUT"
-          echo "function_name=" >> "$GITHUB_OUTPUT"
-
-          if [ -z "$AUTH_LAMBDA_INVOKE_ARN" ] || [ -z "$AUTH_LAMBDA_FUNCTION_NAME" ]; then
-            echo "Outputs da Lambda Auth CPF + Senha nao informados. Provisionamento base seguira sem a rota POST /auth/cpf."
-            exit 0
-          fi
-
-          if aws lambda get-function --function-name "$AUTH_LAMBDA_FUNCTION_NAME" >/dev/null 2>&1; then
-            echo "invoke_arn=$AUTH_LAMBDA_INVOKE_ARN" >> "$GITHUB_OUTPUT"
-            echo "function_name=$AUTH_LAMBDA_FUNCTION_NAME" >> "$GITHUB_OUTPUT"
-            echo "Outputs da Lambda Auth CPF + Senha confirmados. O API Gateway sera integrado a funcao."
-          else
-            echo "Outputs da Lambda Auth CPF + Senha ainda nao confirmados na AWS. Provisionamento base seguira sem a rota POST /auth/cpf."
-          fi
-
-      - name: Terraform apply
-        working-directory: terraform
-        env:
-          TF_VAR_environment: ${{ inputs.environment }}
-          TF_VAR_api_backend_url: ${{ secrets.API_BACKEND_URL || '' }}
-          TF_VAR_auth_lambda_invoke_arn: ${{ steps.lambda_integration.outputs.invoke_arn }}
-          TF_VAR_auth_lambda_function_name: ${{ steps.lambda_integration.outputs.function_name }}
-          TF_VAR_enable_github_actions_eks_access: ${{ secrets.GH_ACTIONS_IAM_USER_ARN != '' && 'true' || 'false' }}
-          TF_VAR_github_actions_iam_user_arn: ${{ secrets.GH_ACTIONS_IAM_USER_ARN || '' }}
-          TF_VAR_github_actions_iam_user_name: ${{ secrets.GH_ACTIONS_IAM_USER_NAME || 'github-actions-oficina-dgcar' }}
-        run: terraform apply -auto-approve
-
-      - name: Publish network outputs to dependent repositories
-        working-directory: terraform
-        env:
-          GH_TOKEN: ${{ secrets.GH_AUTOMATION_TOKEN }}
-          TARGET_ENVIRONMENT: ${{ inputs.environment }}
-          AUTH_LAMBDA_REPO: techdgconsulting/oficina-dgcar-auth-lambda
-          INFRA_DB_REPO: techdgconsulting/oficina-dgcar-infra-db
-        run: |
-          VPC_ID="$(terraform output -raw vpc_id)"
-          PRIVATE_SUBNET_IDS="$(terraform output -json private_subnet_ids)"
-          EKS_CLUSTER_SECURITY_GROUP_ID="$(terraform output -raw eks_cluster_security_group_id)"
-          ALLOWED_DB_SECURITY_GROUP_IDS="[\"${EKS_CLUSTER_SECURITY_GROUP_ID}\"]"
-
-          gh secret set VPC_ID --repo "$AUTH_LAMBDA_REPO" --env "$TARGET_ENVIRONMENT" --body "$VPC_ID"
-          gh secret set PRIVATE_SUBNET_IDS --repo "$AUTH_LAMBDA_REPO" --env "$TARGET_ENVIRONMENT" --body "$PRIVATE_SUBNET_IDS"
-
-          gh secret set VPC_ID --repo "$INFRA_DB_REPO" --env "$TARGET_ENVIRONMENT" --body "$VPC_ID"
-          gh secret set PRIVATE_SUBNET_IDS --repo "$INFRA_DB_REPO" --env "$TARGET_ENVIRONMENT" --body "$PRIVATE_SUBNET_IDS"
-          gh secret set ALLOWED_DB_SECURITY_GROUP_IDS --repo "$INFRA_DB_REPO" --env "$TARGET_ENVIRONMENT" --body "$ALLOWED_DB_SECURITY_GROUP_IDS"
+      - name: Validate shell scripts
+        run: bash -n scripts/preflight/*.sh scripts/github-actions/*.sh scripts/aws/*.sh scripts/smoke/*.sh
