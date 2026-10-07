@@ -8,13 +8,7 @@ shift 3
 
 : "${GH_TOKEN:?GH_TOKEN nao informado}"
 
-marker="$(gh run list \
-  --repo "$repo" \
-  --workflow "$workflow" \
-  --branch "$ref" \
-  --limit 1 \
-  --json databaseId \
-  --jq '.[0].databaseId // 0')"
+marker="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 
 echo "$marker" > ".workflow-marker-${repo//\//-}-${workflow}.txt"
 
@@ -24,3 +18,4 @@ gh workflow run "$workflow" \
   "$@"
 
 echo "Workflow enviado: $repo/$workflow"
+echo "Marcador do disparo: $marker"
