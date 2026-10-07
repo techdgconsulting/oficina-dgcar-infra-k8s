@@ -103,6 +103,12 @@ jobs:
           EXPECTED_SUBNET_CIDRS: "10.40.1.0/24 10.40.2.0/24 10.40.11.0/24 10.40.12.0/24"
         run: scripts/preflight/check-residual-resources.sh
 
+      - name: Prepare failed EKS node group
+        env:
+          EKS_CLUSTER_NAME: oficina-dgcar-homolog-eks
+          EKS_NODEGROUP_NAME: oficina-dgcar-homolog-nodes
+        run: scripts/aws/delete-failed-eks-nodegroup.sh
+
       - name: Provision network, EKS, ECR and API Gateway
         working-directory: terraform
         env:
