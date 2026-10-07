@@ -210,12 +210,14 @@ resource "aws_iam_role_policy_attachment" "ecr_read_only" {
 }
 
 resource "aws_eks_cluster" "main" {
-  name     = "${local.name}-eks"
-  role_arn = aws_iam_role.eks_cluster.arn
-  version  = var.eks_cluster_version
+  name                          = "${local.name}-eks"
+  role_arn                      = aws_iam_role.eks_cluster.arn
+  version                       = var.eks_cluster_version
+  bootstrap_self_managed_addons = false
 
   access_config {
-    authentication_mode = "API_AND_CONFIG_MAP"
+    authentication_mode                         = "API_AND_CONFIG_MAP"
+    bootstrap_cluster_creator_admin_permissions = true
   }
 
   vpc_config {

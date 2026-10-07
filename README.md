@@ -1,361 +1,231 @@
 # oficina-dgcar-infra-k8s
 
-Infraestrutura Terraform de Kubernetes, registry e borda de entrada da Oficina Mecanica DGCar.
+Infraestrutura Kubernetes, registry, API Gateway e automacao operacional do ambiente academico da Oficina Mecanica DGCar.
 
 ## Proposito
 
-Este repositorio provisiona e documenta a infraestrutura de execucao da aplicacao:
+Este repositorio concentra a esteira oficial de criacao e remocao do ambiente AWS `homolog`.
 
-- VPC, subnets e rotas base;
+O provisionamento e o destroy nascem aqui. O repositorio de documentacao registra arquitetura e decisoes, mas nao executa infraestrutura.
+
+## Recursos Provisionados
+
+O fluxo de infraestrutura cria e integra obrigatoriamente:
+
+- VPC, subnets, route tables e internet gateway;
+- security groups compartilhados;
 - Amazon EKS;
+- node group;
 - Amazon ECR;
 - API Gateway HTTP;
-- integracao API Gateway para a API em Kubernetes;
-- integracao API Gateway para a Lambda de autenticacao por CPF;
-- manifests Kubernetes da aplicacao principal;
-- HPA, namespace, service, deployment, configmap e secret example.
+- rota `POST /auth/cpf`;
+- integracao API Gateway -> Lambda Auth CPF + senha;
+- rota proxy `ANY /{proxy+}`;
+- integracao API Gateway -> aplicacao no EKS;
+- permissoes para GitHub Actions operar o EKS;
+- outputs consumidos pelos repositorios dependentes.
 
-## Tecnologias
+O ambiente so fica concluido quando rede, banco, Lambda, codigo da Lambda, API Gateway, aplicacao no EKS e rotas do Gateway estao funcionando em conjunto.
 
-- Terraform;
-- AWS EKS;
-- AWS ECR;
-- AWS API Gateway;
-- Kubernetes;
-- Kustomize;
-- GitHub Actions.
+## Repositorios Integrados
 
-## Documentacao Central
+`oficina-dgcar-infra-k8s` coordena a execucao ponta a ponta.
 
-A documentacao arquitetural completa do Tech Challenge 3 esta centralizada em:
+`oficina-dgcar-infra-db` cria o RDS PostgreSQL, subnet group, security group do banco e outputs de conexao.
 
-[oficina-dgcar-docs](https://github.com/techdgconsulting/oficina-dgcar-docs)
+`oficina-dgcar-auth-lambda` cria a Lambda Auth CPF + senha, IAM, security group, Log Group e publica o pacote da funcao.
 
-Este repositorio mantem apenas a documentacao especifica da infraestrutura Kubernetes, registry, API Gateway, manifests, pipeline e deploy de borda.
+`oficina-dgcar-api` cria a imagem Docker, publica no ECR, aplica manifests no EKS e expoe o Service da aplicacao.
 
-## Separacao De Responsabilidades
+## Workflows Oficiais
 
-Este repositorio nao provisiona o RDS PostgreSQL e nao contem codigo da aplicacao Java ou da Lambda.
+### Provisionar Ambiente Homolog
 
-Outputs publicados para outros repositorios:
-
-- `vpc_id`;
-- `public_subnet_ids`;
-- `private_subnet_ids`;
-- `eks_cluster_security_group_id`;
-- `ecr_repository_url`;
-- `eks_cluster_name`;
-- `eks_cluster_endpoint`;
-- `api_gateway_id`;
-- `api_gateway_endpoint`;
-- `api_gateway_execution_arn`.
-
-Entradas esperadas de outros repositorios:
-
-- `auth_lambda_invoke_arn`, produzido por `oficina-dgcar-auth-lambda`;
-- `auth_lambda_function_name`, produzido por `oficina-dgcar-auth-lambda`;
-- `api_backend_url`, endpoint HTTP da aplicacao exposta no Kubernetes;
-- dados de conexao do banco, produzidos por `oficina-dgcar-infra-db`, aplicados via Secret/ConfigMap.
-
-## API Gateway
-
-O API Gateway HTTP e criado como entrada oficial da solucao.
-
-Integracoes configuradas:
-
-- rota `POST /auth/cpf`, integrada a Lambda de autenticacao por CPF quando `AUTH_LAMBDA_INVOKE_ARN` e `AUTH_LAMBDA_FUNCTION_NAME` existem;
-- rota `ANY /{proxy+}`, integrada ao backend da aplicacao quando `API_BACKEND_URL` existe.
-- parameter mapping `overwrite:path = "/$request.path.proxy"` na integracao HTTP proxy da aplicacao, garantindo que chamadas como `/api/ordens-servico/cliente/1` cheguem ao Spring Boot com o path original.
-
-`API_BACKEND_URL` foi tratado como entrada opcional. Quando o valor esta ausente ou vazio, a integracao HTTP da aplicacao nao e criada. Esse comportamento permite provisionar primeiro a infraestrutura base de VPC, EKS, ECR e API Gateway, antes da aplicacao principal estar exposta em Kubernetes.
-
-Fluxo aplicado:
-
-1. Primeiro `apply`: cria rede, EKS, ECR e API Gateway sem rota proxy da aplicacao quando `API_BACKEND_URL` esta vazio.
-2. Deploy da aplicacao: publica o backend HTTP da API em Kubernetes.
-3. Novo `apply`: cria ou atualiza a rota `ANY /{proxy+}` apontando para `API_BACKEND_URL`.
-
-Da mesma forma, a rota `POST /auth/cpf` e uma integracao progressiva. Ela passa a ser criada quando os outputs da Lambda sao publicados pelo repositorio `oficina-dgcar-auth-lambda`.
-
-O workflow de `apply` trata `AUTH_LAMBDA_INVOKE_ARN` e `AUTH_LAMBDA_FUNCTION_NAME` como entradas opcionais durante o provisionamento base. Sem esses outputs confirmados, o Terraform cria a infraestrutura de rede, EKS, ECR e API Gateway sem a rota `POST /auth/cpf`. Depois que `oficina-dgcar-auth-lambda` executa `apply-infra` e publica os outputs, um novo `apply` deste repositorio cria a integracao do API Gateway com a Lambda.
-
-Permissao de invocacao da Lambda:
-
-- a rota `POST /auth/cpf` usa integracao `AWS_PROXY` com a Lambda Auth CPF;
-- a permissao `lambda:InvokeFunction` usa `SourceArn` explicito no formato `arn:aws:execute-api:<regiao>:<account-id>:<api-id>/*/*`;
-- esse formato vincula a permissao ao API Gateway da mesma conta AWS;
-- o `apply` do Terraform atualiza a policy da Lambda quando os outputs da funcao estao disponiveis.
-
-Endpoint homolog atual:
+Workflow:
 
 ```text
-POST https://vqgo7dwgqj.execute-api.us-east-1.amazonaws.com/auth/cpf
+.github/workflows/provision-homolog.yml
 ```
 
-Endpoint base homolog:
+Execucao:
 
 ```text
-https://vqgo7dwgqj.execute-api.us-east-1.amazonaws.com
+Actions -> Provisionar Ambiente Homolog -> Run workflow
+confirm=PROVISIONAR
+run_smoke_tests=false ou true
 ```
 
-Backend HTTP da aplicacao em Kubernetes cadastrado no environment `homolog`:
+O workflow executa:
+
+1. valida confirmacao textual;
+2. valida credenciais, token GitHub, state remoto e lock;
+3. valida recursos residuais conflitantes;
+4. cria rede, EKS, node group, ECR e API Gateway;
+5. publica outputs de rede para banco, Lambda e API;
+6. executa o provisionamento do banco;
+7. executa o provisionamento da Lambda;
+8. executa novo apply do banco para liberar acesso da Lambda;
+9. publica o codigo da Lambda;
+10. integra `POST /auth/cpf` no API Gateway;
+11. publica a aplicacao no EKS;
+12. captura o LoadBalancer da aplicacao;
+13. integra `ANY /{proxy+}` no API Gateway;
+14. valida outputs finais;
+15. executa smoke tests quando solicitado.
+
+### Destruir Ambiente Homolog
+
+Workflow:
 
 ```text
-API_BACKEND_URL=http://a0340e77e14674adbb11ba17cf6384d8-1700619956.us-east-1.elb.amazonaws.com
+.github/workflows/destroy-homolog.yml
 ```
 
-Esse valor foi obtido do Service `oficina-api` no EKS:
-
-```powershell
-aws eks update-kubeconfig --region us-east-1 --name oficina-dgcar-homolog-eks
-kubectl get svc oficina-api -n oficina -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
-```
-
-O secret foi gravado no GitHub Environment `homolog` com:
-
-```powershell
-gh secret set API_BACKEND_URL `
-  --repo techdgconsulting/oficina-dgcar-infra-k8s `
-  --env homolog `
-  --body "http://a0340e77e14674adbb11ba17cf6384d8-1700619956.us-east-1.elb.amazonaws.com"
-```
-
-Depois desse cadastro, o workflow manual `Infra K8s` com `action=apply` cria a rota `ANY /{proxy+}` no API Gateway.
-
-Validacao esperada apos o `apply`:
+Execucao:
 
 ```text
-POST /auth/cpf -> 200 com accessToken
-GET /api/ordens-servico/cliente/{clienteId} com Bearer token -> 200
-GET /api/ordens-servico/cliente/{clienteId} sem token -> 401
-GET /api/ordens-servico/cliente/{outroClienteId} com Bearer token de outro cliente -> 403
+Actions -> Destruir Ambiente Homolog -> Run workflow
+confirm=DESTRUIR
 ```
 
-Quando `/auth/cpf` funciona mas chamadas para `/api/...` retornam:
+O workflow remove:
 
-```json
-{
-  "message": "Not Found"
-}
-```
+1. workloads da aplicacao no EKS;
+2. Service `LoadBalancer`;
+3. Load Balancers da AWS;
+4. integracoes dependentes do API Gateway;
+5. Lambda Auth CPF + senha;
+6. RDS PostgreSQL;
+7. node group;
+8. EKS;
+9. API Gateway;
+10. ECR;
+11. security groups;
+12. route tables;
+13. internet gateway;
+14. subnets;
+15. VPC.
 
-Enquanto `API_BACKEND_URL` nao esta configurado no environment, o API Gateway permanece sem a rota proxy da aplicacao. Depois que a API publica o LoadBalancer, um novo `apply` deste repositorio cria a integracao `ANY /{proxy+}`.
+Ao final, a esteira valida EKS, API Gateway, ECR, VPC, RDS, Lambda, ENIs e snapshots residuais do projeto.
 
-Quando a chamada direta ao LoadBalancer retorna `200`, mas a mesma rota via API Gateway retorna `404` da aplicacao, a causa esperada e ausencia do parameter mapping de path na integracao HTTP proxy. O Terraform aplica:
+## Preflight
 
-```hcl
-request_parameters = {
-  "overwrite:path" = "/$request.path.proxy"
-}
-```
-
-## State Terraform
-
-O backend remoto usa S3 com lockfile nativo:
+Os scripts ficam em:
 
 ```text
-use_lockfile=true
+scripts/preflight/
 ```
 
-Secrets esperados:
+Eles validam:
+
+- identidade AWS;
+- regiao AWS;
+- bucket e key do state;
+- ausencia de `.tflock`;
+- secrets e variables obrigatorios;
+- environments do GitHub;
+- VPC residual com CIDR `10.40.0.0/16`;
+- subnets residuais com CIDRs `10.40.1.0/24`, `10.40.2.0/24`, `10.40.11.0/24` e `10.40.12.0/24`;
+- dependencias de VPC durante destroy.
+
+Quando existe recurso residual conflitante, o provisionamento para antes do `apply`.
+
+## Secrets E Variables
+
+Secrets esperados no environment `homolog` deste repositorio:
 
 - `AWS_ACCESS_KEY_ID`;
 - `AWS_SECRET_ACCESS_KEY`;
-- `AWS_REGION`;
+- `GH_AUTOMATION_TOKEN`;
 - `TF_STATE_BUCKET`;
 - `TF_STATE_KEY`;
-- `GH_AUTOMATION_TOKEN`;
 - `GH_ACTIONS_IAM_USER_ARN`;
-- `API_BACKEND_URL`;
-- `AUTH_LAMBDA_INVOKE_ARN`;
-- `AUTH_LAMBDA_FUNCTION_NAME`;
-- `NEW_RELIC_LICENSE_KEY`, quando a integracao Kubernetes for habilitada.
+- `GH_ACTIONS_IAM_USER_NAME`.
 
-Chaves de state definidas:
+Variables esperadas:
 
-- homologacao: `homolog/infra-k8s/terraform.tfstate`;
-- producao: `prod/infra-k8s/terraform.tfstate`.
+- `AWS_REGION`.
 
-## Pipeline
+Smoke tests usam:
 
-Pull Requests executam:
+- `CLIENT_TEST_CPF`;
+- `CLIENT_TEST_PASSWORD`;
+- `CLIENT_TEST_OS_NUMBER`.
+- `CLIENT_OTHER_OS_NUMBER`.
 
-- `terraform fmt -check -recursive`;
-- `terraform init`;
-- `terraform validate`;
-- `terraform plan`;
-- renderizacao dos manifests com `kubectl kustomize`;
-- verificacao do manifesto renderizado sem depender de cluster ativo.
+Os repositorios dependentes continuam com seus proprios secrets de banco, JWT, Mailtrap, deploy e runtime.
 
-Push em `homolog` ou `main` executa validacao e plan offline.
+## Outputs Publicados
 
-Apply real e disparado manualmente por `workflow_dispatch`, usando `action=apply` e o environment desejado. O environment `prod` esta sujeito a aprovacao no GitHub.
-
-Depois do `terraform apply`, o workflow publica automaticamente os outputs de rede nos repos dependentes.
-
-## Destroy Manual Do Ambiente Academico
-
-Foi criada a action `Destroy Infra K8s` para desligar a infraestrutura deste repositorio apos validacoes academicas e evitar custo recorrente na AWS.
-
-Essa automacao e manual, usa os secrets do GitHub Environment selecionado e exige confirmacao textual antes de executar qualquer remocao.
-
-Execucao no GitHub:
-
-1. Acessar `Actions`.
-2. Selecionar `Destroy Infra K8s`.
-3. Acionar `Run workflow`.
-4. Escolher `action=cleanup-workloads` para remover workloads Kubernetes e Load Balancers antes dos destroys da Lambda e do banco.
-5. Escolher `action=destroy` para destruir EKS, API Gateway, ECR, VPC, subnets e rede no final do teardown.
-6. Escolher o environment `homolog` ou `prod`.
-7. Preencher `confirm_destroy` com o valor exato `DESTROY`.
-
-Quando o environment selecionado possui required reviewers, o GitHub solicita aprovacao antes da execucao. No `homolog`, a execucao segue direto apos o `Run workflow` porque o environment nao possui aprovacao obrigatoria configurada.
-
-Com `action=cleanup-workloads`, o workflow executa:
-
-- leitura do state remoto Terraform em S3;
-- obtencao dos outputs `vpc_id` e `eks_cluster_name`;
-- remocao dos recursos Kubernetes da aplicacao no namespace `oficina`;
-- remocao de Load Balancers Classic e ELBv2 criados pelo Kubernetes dentro da VPC;
-- remocao de security groups orfaos criados por Services Kubernetes do tipo `LoadBalancer`.
-
-Com `action=destroy`, o workflow executa os passos acima e tambem:
-
-- execucao de `terraform destroy`;
-- remocao de security groups orfaos criados por Services Kubernetes do tipo `LoadBalancer`;
-- nova tentativa de `terraform destroy` para concluir a exclusao de subnets, internet gateway e VPC apos a limpeza de dependencias.
-
-Esse fluxo cobre os recursos deste repositorio:
-
-- EKS;
-- node group;
-- ECR;
-- API Gateway;
-- VPC, subnets, route tables, NAT/Internet Gateway e security groups gerenciados pelo Terraform;
-- recursos auxiliares criados pelo Kubernetes que impedem a exclusao completa da VPC quando ficam orfaos.
-
-A action nao e executada em push, Pull Request ou merge. O cleanup e o destroy real so ocorrem por `workflow_dispatch` com `confirm_destroy=DESTROY`.
-
-O destroy deste repositorio nao remove recursos que pertencem a outros repositorios:
-
-- RDS PostgreSQL fica sob responsabilidade de `oficina-dgcar-infra-db`;
-- Lambda Auth CPF, IAM Role e Log Group da Lambda ficam sob responsabilidade de `oficina-dgcar-auth-lambda`;
-- imagem e deploy da aplicacao ficam sob responsabilidade de `oficina-dgcar-api`.
-
-Para teardown completo do ambiente academico, a execucao operacional e:
-
-| Ordem | Repositorio | Workflow no GitHub Actions | Campos do Run workflow |
-|---|---|---|---|
-| 1 | `oficina-dgcar-infra-k8s` | `Destroy Infra K8s` | `action=cleanup-workloads`, `environment=homolog`, `confirm_destroy=DESTROY` |
-| 2 | `oficina-dgcar-infra-db` | `Managed Database Terraform` | `action=destroy`, `environment=homolog`, `confirm_destroy=DESTROY` |
-| 3 | `oficina-dgcar-auth-lambda` | `Auth CPF Lambda` | `action=destroy-infra`, `environment=homolog`, `confirm_destroy=DESTROY` |
-| 4 | AWS | Aguardar liberacao de ENIs | aguardar alguns minutos antes do destroy final da rede |
-| 5 | `oficina-dgcar-infra-k8s` | `Destroy Infra K8s` | `action=destroy`, `environment=homolog`, `confirm_destroy=DESTROY` |
-
-No repo `oficina-dgcar-infra-db`, usar o workflow `Managed Database Terraform`. O workflow antigo `Infra DB` nao e usado para este teardown.
-
-Essa ordem evita falhas por dependencia entre Load Balancers, security groups, subnets, Lambda, API Gateway e RDS. O banco sai antes da Lambda porque o security group do RDS referencia o security group da Lambda como origem autorizada para PostgreSQL. A rede fica por ultimo porque as subnets so podem ser removidas depois que as ENIs gerenciadas da Lambda e do RDS deixam de existir.
-
-## Sequencia Completa De Provisionamento
-
-A criacao completa do ambiente AWS em `homolog` segue esta ordem:
-
-1. `oficina-dgcar-infra-k8s`: executar `Infra K8s` com `action=apply` para criar rede, EKS, ECR e API Gateway base, ainda sem rotas dependentes da Lambda ou da aplicacao.
-2. `oficina-dgcar-infra-db`: executar `Infra DB` com `action=apply` para criar o RDS PostgreSQL na rede publicada pelo repo Kubernetes.
-3. `oficina-dgcar-auth-lambda`: executar `Auth CPF Lambda` com `action=apply-infra` para criar a Lambda Auth CPF + Senha, IAM, Log Group e security group.
-4. `oficina-dgcar-infra-db`: executar novo `apply` para liberar o PostgreSQL ao security group publicado pela Lambda.
-5. `oficina-dgcar-auth-lambda`: executar `Auth CPF Lambda` com `action=deploy-code` para publicar o pacote da funcao.
-6. `oficina-dgcar-infra-k8s`: executar novo `apply` para criar ou atualizar a integracao `POST /auth/cpf` do API Gateway com a Lambda.
-7. `oficina-dgcar-api`: executar `App CI/CD - Build, Test and Deploy` para publicar a aplicacao no EKS e gravar automaticamente `API_BACKEND_URL` neste repositorio.
-8. `oficina-dgcar-infra-k8s`: executar novo `apply` para criar a rota proxy `ANY /{proxy+}` apontando para o backend Kubernetes.
-
-Essa sequencia foi definida porque os repositorios trocam outputs por GitHub Secrets/Variables. A Lambda depende dos outputs de rede e banco; o banco precisa conhecer o security group da Lambda para liberar a conexao PostgreSQL; o Gateway depende dos outputs da Lambda para `/auth/cpf`; e a rota proxy da API usa o endpoint HTTP publicado automaticamente depois do deploy da aplicacao.
-
-## Acesso Do GitHub Actions Ao EKS
-
-O EKS usa access entries para autorizar o principal IAM que executa `kubectl` nos workflows.
-
-Foi configurado no environment `homolog` o secret:
-
-```text
-GH_ACTIONS_IAM_USER_ARN=arn:aws:iam::857145323352:user/16soat-tf
-GH_ACTIONS_IAM_USER_NAME=16soat-tf
-```
-
-Esses valores sao passados para o Terraform durante `plan` e `apply`. Quando `GH_ACTIONS_IAM_USER_ARN` existe no environment, o workflow habilita a criacao do acesso Kubernetes para o principal IAM usado pelas esteiras.
-
-Recursos Terraform responsaveis:
-
-- `aws_eks_access_entry.github_actions`;
-- `aws_eks_access_policy_association.github_actions_cluster_admin`.
-
-Permissao aplicada:
-
-```text
-arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy
-```
-
-Evidencia operacional em `homolog`:
-
-```bash
-aws eks list-access-entries \
-  --region us-east-1 \
-  --cluster-name oficina-dgcar-homolog-eks
-
-aws eks list-associated-access-policies \
-  --region us-east-1 \
-  --cluster-name oficina-dgcar-homolog-eks \
-  --principal-arn arn:aws:iam::857145323352:user/16soat-tf
-```
-
-O acesso do GitHub Actions ao Kubernetes depende de access entry e policy associada no EKS. Configuracao aplicada em `homolog`:
-
-- access entry criado para `arn:aws:iam::857145323352:user/16soat-tf`;
-- policy `AmazonEKSClusterAdminPolicy` associada em escopo `cluster`;
-- `kubectl get namespace` validado com sucesso apos a associacao.
-
-Secrets gravados em `oficina-dgcar-auth-lambda`:
-
-- `VPC_ID`;
-- `PRIVATE_SUBNET_IDS`.
-
-Secrets gravados em `oficina-dgcar-infra-db`:
+Este repositorio publica:
 
 - `VPC_ID`;
 - `PRIVATE_SUBNET_IDS`;
-- `ALLOWED_DB_SECURITY_GROUP_IDS`.
+- `ALLOWED_DB_SECURITY_GROUP_IDS`;
+- `ECR_REPOSITORY`;
+- `EKS_CLUSTER_NAME`.
 
-## Automacao Entre Repositorios
+Os demais repositorios publicam seus proprios outputs durante os workflows chamados pela esteira.
 
-O workflow usa `GH_AUTOMATION_TOKEN` para gravar secrets nos repos dependentes via GitHub CLI. Esse token fica configurado nos environments `homolog` e `prod`.
+## Terraform State
 
-Fluxo automatizado:
+Backend remoto:
 
-1. `oficina-dgcar-infra-k8s` executa `apply`.
-2. Terraform publica `vpc_id`, `private_subnet_ids` e `eks_cluster_security_group_id`.
-3. O workflow grava `VPC_ID` e `PRIVATE_SUBNET_IDS` no repo `oficina-dgcar-auth-lambda`.
-4. O workflow grava `VPC_ID`, `PRIVATE_SUBNET_IDS` e `ALLOWED_DB_SECURITY_GROUP_IDS` no repo `oficina-dgcar-infra-db`.
+```hcl
+terraform {
+  backend "s3" {}
+}
+```
 
-## Execucao Local
+Inicializacao remota:
+
+```bash
+terraform init \
+  -backend-config="bucket=$TF_STATE_BUCKET" \
+  -backend-config="key=$TF_STATE_KEY" \
+  -backend-config="region=$AWS_REGION" \
+  -backend-config="use_lockfile=true"
+```
+
+O backend usa `use_lockfile=true`.
+
+`dynamodb_table` nao e usado.
+
+## Validacao Local
 
 ```bash
 cd terraform
-cp terraform.tfvars.example terraform.tfvars
-terraform init -backend=false -reconfigure
-terraform fmt -recursive
+terraform fmt -check -recursive
+terraform init -backend=false
 terraform validate
-terraform plan
 ```
 
-Para executar `terraform plan` sem acesso ao backend remoto, renomeie temporariamente `backend.tf` antes do `terraform init`.
-
-Para validar manifests:
+Validacao dos scripts:
 
 ```bash
-kubectl kustomize k8s
+bash -n scripts/preflight/*.sh scripts/github-actions/*.sh scripts/aws/*.sh scripts/smoke/*.sh
+```
+
+Validacao dos manifests:
+
+```bash
 kubectl kustomize k8s > rendered-k8s.yaml
 test -s rendered-k8s.yaml
 ```
+
+## Tratamento De Falhas
+
+Lock Terraform ativo bloqueia o workflow antes do `apply` ou `destroy`.
+
+VPC ou subnet residual fora do state bloqueia o provisionamento.
+
+EKS parcial fora do state bloqueia continuidade ate o state ser saneado ou o ambiente ser removido.
+
+ENIs presas sao listadas com description, subnet, security group e attachment.
+
+RDS em `homolog` usa destroy sem snapshot final fixo.
+
+Erro 404 ao limpar secret ou variable significa recurso ja ausente.
 
 ## Origem Historica
 

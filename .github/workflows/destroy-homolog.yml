@@ -1,0 +1,191 @@
+name: Destruir Ambiente Homolog
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Digite DESTRUIR para remover o ambiente homolog"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ambiente-academico-homolog
+  cancel-in-progress: false
+
+env:
+  TARGET_ENVIRONMENT: homolog
+  AWS_REGION: ${{ secrets.AWS_REGION || vars.AWS_REGION || 'us-east-1' }}
+  INFRA_DB_REPO: techdgconsulting/oficina-dgcar-infra-db
+  AUTH_LAMBDA_REPO: techdgconsulting/oficina-dgcar-auth-lambda
+  INFRA_DB_WORKFLOW: terraform.yml
+  AUTH_LAMBDA_WORKFLOW: ci.yml
+
+jobs:
+  destroy:
+    name: destruir homolog
+    if: inputs.confirm == 'DESTRUIR'
+    runs-on: ubuntu-latest
+    environment: homolog
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Prepare shell scripts
+        run: find scripts -type f -name "*.sh" -exec chmod +x {} \;
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.15.8
+          terraform_wrapper: false
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Validate required configuration
+        env:
+          GH_AUTOMATION_TOKEN: ${{ secrets.GH_AUTOMATION_TOKEN }}
+          TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
+          TF_STATE_KEY: ${{ secrets.TF_STATE_KEY }}
+        run: |
+          scripts/preflight/check-required-secrets.sh \
+            AWS_ACCESS_KEY_ID \
+            AWS_SECRET_ACCESS_KEY \
+            AWS_REGION \
+            GH_AUTOMATION_TOKEN \
+            TF_STATE_BUCKET \
+            TF_STATE_KEY
+
+      - name: Validate AWS identity
+        run: scripts/preflight/check-aws-identity.sh
+
+      - name: Validate Terraform lock
+        env:
+          TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
+          TF_STATE_KEY: ${{ secrets.TF_STATE_KEY }}
+        run: scripts/preflight/check-terraform-lock.sh
+
+      - name: Terraform init with remote state
+        working-directory: terraform
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
+            -backend-config="key=${{ secrets.TF_STATE_KEY }}" \
+            -backend-config="region=${{ env.AWS_REGION }}" \
+            -backend-config="use_lockfile=true"
+
+      - name: Read infrastructure outputs
+        id: tf_outputs
+        working-directory: terraform
+        env:
+          TF_VAR_environment: homolog
+          TF_VAR_api_backend_url: ""
+          TF_VAR_auth_lambda_invoke_arn: ""
+          TF_VAR_auth_lambda_function_name: ""
+        run: |
+          set +e
+          VPC_ID="$(terraform output -raw vpc_id 2>/dev/null)"
+          EKS_CLUSTER_NAME="$(terraform output -raw eks_cluster_name 2>/dev/null)"
+          set -e
+
+          echo "vpc_id=$VPC_ID" >> "$GITHUB_OUTPUT"
+          echo "eks_cluster_name=$EKS_CLUSTER_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Remove application workloads
+        if: steps.tf_outputs.outputs.eks_cluster_name != ''
+        env:
+          EKS_CLUSTER_NAME: ${{ steps.tf_outputs.outputs.eks_cluster_name }}
+        run: |
+          set +e
+          aws eks describe-cluster --region "$AWS_REGION" --name "$EKS_CLUSTER_NAME" >/dev/null 2>&1
+          CLUSTER_EXISTS="$?"
+          set -e
+
+          if [ "$CLUSTER_EXISTS" -ne 0 ]; then
+            echo "Cluster EKS ja estava ausente."
+            exit 0
+          fi
+
+          aws eks update-kubeconfig --region "$AWS_REGION" --name "$EKS_CLUSTER_NAME"
+          kubectl delete hpa oficina-api -n oficina --ignore-not-found=true --timeout=5m
+          kubectl delete service oficina-api -n oficina --ignore-not-found=true --timeout=5m
+          kubectl delete deployment oficina-api -n oficina --ignore-not-found=true --timeout=5m
+          kubectl delete configmap oficina-api-config -n oficina --ignore-not-found=true --timeout=5m
+          kubectl delete secret oficina-api-secret -n oficina --ignore-not-found=true --timeout=5m
+          kubectl delete namespace oficina --ignore-not-found=true --timeout=5m
+
+      - name: Remove load balancers from VPC
+        if: steps.tf_outputs.outputs.vpc_id != ''
+        env:
+          VPC_ID: ${{ steps.tf_outputs.outputs.vpc_id }}
+        run: |
+          set -euo pipefail
+          scripts/aws/remove-load-balancers.sh "$VPC_ID"
+
+      - name: Remove API Gateway dependent routes
+        working-directory: terraform
+        env:
+          TF_VAR_environment: homolog
+          TF_VAR_api_backend_url: ""
+          TF_VAR_auth_lambda_invoke_arn: ""
+          TF_VAR_auth_lambda_function_name: ""
+          TF_VAR_enable_github_actions_eks_access: "false"
+          TF_VAR_github_actions_iam_user_arn: ""
+          TF_VAR_github_actions_iam_user_name: ${{ secrets.GH_ACTIONS_IAM_USER_NAME || 'github-actions-oficina-dgcar' }}
+        run: terraform apply -auto-approve
+
+      - name: Destroy Lambda infrastructure
+        env:
+          GH_TOKEN: ${{ secrets.GH_AUTOMATION_TOKEN }}
+        run: |
+          scripts/github-actions/dispatch-workflow.sh "$AUTH_LAMBDA_REPO" "$AUTH_LAMBDA_WORKFLOW" main \
+            -f action=destroy-infra \
+            -f environment="$TARGET_ENVIRONMENT" \
+            -f confirm_destroy=DESTROY
+          scripts/github-actions/wait-workflow.sh "$AUTH_LAMBDA_REPO" "$AUTH_LAMBDA_WORKFLOW" main
+
+      - name: Destroy database infrastructure
+        env:
+          GH_TOKEN: ${{ secrets.GH_AUTOMATION_TOKEN }}
+        run: |
+          scripts/github-actions/dispatch-workflow.sh "$INFRA_DB_REPO" "$INFRA_DB_WORKFLOW" main \
+            -f action=destroy \
+            -f environment="$TARGET_ENVIRONMENT" \
+            -f confirm_destroy=DESTROY
+          scripts/github-actions/wait-workflow.sh "$INFRA_DB_REPO" "$INFRA_DB_WORKFLOW" main
+
+      - name: Wait for VPC dependencies
+        if: steps.tf_outputs.outputs.vpc_id != ''
+        env:
+          VPC_ID: ${{ steps.tf_outputs.outputs.vpc_id }}
+        run: scripts/aws/wait-vpc-dependencies.sh "$VPC_ID"
+
+      - name: Destroy Kubernetes infrastructure
+        working-directory: terraform
+        env:
+          TF_VAR_environment: homolog
+          TF_VAR_api_backend_url: ""
+          TF_VAR_auth_lambda_invoke_arn: ""
+          TF_VAR_auth_lambda_function_name: ""
+          TF_VAR_enable_github_actions_eks_access: "false"
+          TF_VAR_github_actions_iam_user_arn: ""
+          TF_VAR_github_actions_iam_user_name: ${{ secrets.GH_ACTIONS_IAM_USER_NAME || 'github-actions-oficina-dgcar' }}
+        run: terraform destroy -auto-approve
+
+      - name: Validate environment removal
+        if: always()
+        env:
+          VPC_ID: ${{ steps.tf_outputs.outputs.vpc_id }}
+        run: |
+          if [ -n "$VPC_ID" ]; then
+            scripts/preflight/check-vpc-dependencies.sh "$VPC_ID"
+          fi
+          scripts/aws/assert-environment-destroyed.sh
