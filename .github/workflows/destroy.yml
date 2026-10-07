@@ -152,7 +152,42 @@ jobs:
           TF_VAR_auth_lambda_function_name: ${{ secrets.AUTH_LAMBDA_FUNCTION_NAME || '' }}
         run: terraform destroy -auto-approve
 
-      - name: Remove orphan Kubernetes security groups
+      - name: Diagnose VPC dependencies before retry
+        if: always() && steps.tf_outputs.outputs.vpc_id != ''
+        env:
+          AWS_REGION: ${{ secrets.AWS_REGION || 'us-east-1' }}
+          VPC_ID: ${{ steps.tf_outputs.outputs.vpc_id }}
+        run: |
+          set -euo pipefail
+
+          echo "ENIs restantes na VPC $VPC_ID"
+          aws ec2 describe-network-interfaces \
+            --region "$AWS_REGION" \
+            --filters "Name=vpc-id,Values=${VPC_ID}" \
+            --query "NetworkInterfaces[*].{Id:NetworkInterfaceId,Status:Status,Description:Description,RequesterManaged:RequesterManaged,Subnet:SubnetId,Groups:Groups[*].GroupId}" \
+            --output table
+
+          echo "Security groups restantes na VPC $VPC_ID"
+          aws ec2 describe-security-groups \
+            --region "$AWS_REGION" \
+            --filters "Name=vpc-id,Values=${VPC_ID}" \
+            --query "SecurityGroups[*].{Id:GroupId,Name:GroupName,Description:Description}" \
+            --output table
+
+          echo "Load Balancers restantes na VPC $VPC_ID"
+          aws elbv2 describe-load-balancers \
+            --region "$AWS_REGION" \
+            --query "LoadBalancers[?VpcId=='${VPC_ID}'].{Arn:LoadBalancerArn,Name:LoadBalancerName,State:State.Code}" \
+            --output table
+
+          echo "VPC endpoints restantes na VPC $VPC_ID"
+          aws ec2 describe-vpc-endpoints \
+            --region "$AWS_REGION" \
+            --filters "Name=vpc-id,Values=${VPC_ID}" \
+            --query "VpcEndpoints[*].{Id:VpcEndpointId,State:State,Service:ServiceName}" \
+            --output table
+
+      - name: Remove orphan Kubernetes and EKS security groups
         if: always() && steps.tf_outputs.outputs.vpc_id != ''
         env:
           AWS_REGION: ${{ secrets.AWS_REGION || 'us-east-1' }}
@@ -163,7 +198,7 @@ jobs:
           ORPHAN_SGS="$(aws ec2 describe-security-groups \
             --region "$AWS_REGION" \
             --filters "Name=vpc-id,Values=${VPC_ID}" \
-            --query "SecurityGroups[?starts_with(GroupName, 'k8s-elb-') || contains(Description, 'Kubernetes ELB')].GroupId" \
+            --query "SecurityGroups[?GroupName!='default' && (starts_with(GroupName, 'k8s-elb-') || starts_with(GroupName, 'eks-cluster-sg-') || contains(Description, 'Kubernetes ELB') || contains(Description, 'EKS created security group'))].GroupId" \
             --output text)"
 
           for SG_ID in $ORPHAN_SGS; do

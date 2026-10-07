@@ -2,6 +2,8 @@
 
 Infraestrutura Terraform de Kubernetes, registry e borda de entrada da Oficina Mecanica DGCar.
 
+Operacao ponta a ponta do ambiente academico: [oficina-dgcar-docs/docs/operacao/ambiente-academico.md](https://github.com/techdgconsulting/oficina-dgcar-docs/blob/main/docs/operacao/ambiente-academico.md).
+
 ## Proposito
 
 Este repositorio provisiona e documenta a infraestrutura de execucao da aplicacao:
@@ -222,7 +224,9 @@ Com `action=cleanup-workloads`, o workflow executa:
 Com `action=destroy`, o workflow executa os passos acima e tambem:
 
 - execucao de `terraform destroy`;
+- diagnostico de dependencias restantes da VPC antes do retry;
 - remocao de security groups orfaos criados por Services Kubernetes do tipo `LoadBalancer`;
+- remocao de security groups residuais de EKS sem ENI associada;
 - nova tentativa de `terraform destroy` para concluir a exclusao de subnets, internet gateway e VPC apos a limpeza de dependencias.
 
 Esse fluxo cobre os recursos deste repositorio:
@@ -252,7 +256,7 @@ Para teardown completo do ambiente academico, a execucao operacional e:
 | 4 | AWS | Aguardar liberacao de ENIs | aguardar alguns minutos antes do destroy final da rede |
 | 5 | `oficina-dgcar-infra-k8s` | `Destroy Infra K8s` | `action=destroy`, `environment=homolog`, `confirm_destroy=DESTROY` |
 
-No repo `oficina-dgcar-infra-db`, usar o workflow `Managed Database Terraform`. O workflow antigo `Infra DB` nao e usado para este teardown.
+No repo `oficina-dgcar-infra-db`, usar o workflow `Managed Database Terraform`. O workflow `Infra DB` nao e usado para este teardown.
 
 Essa ordem evita falhas por dependencia entre Load Balancers, security groups, subnets, Lambda, API Gateway e RDS. O banco sai antes da Lambda porque o security group do RDS referencia o security group da Lambda como origem autorizada para PostgreSQL. A rede fica por ultimo porque as subnets so podem ser removidas depois que as ENIs gerenciadas da Lambda e do RDS deixam de existir.
 
