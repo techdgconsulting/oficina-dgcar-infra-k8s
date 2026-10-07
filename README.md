@@ -197,23 +197,30 @@ Depois do `terraform apply`, o workflow publica automaticamente os outputs de re
 
 Foi criada a action `Destroy Infra K8s` para desligar a infraestrutura deste repositorio apos validacoes academicas e evitar custo recorrente na AWS.
 
-Essa automacao e manual, protegida por environment e exige confirmacao textual antes de executar qualquer remocao.
+Essa automacao e manual, usa os secrets do GitHub Environment selecionado e exige confirmacao textual antes de executar qualquer remocao.
 
 Execucao no GitHub:
 
 1. Acessar `Actions`.
 2. Selecionar `Destroy Infra K8s`.
 3. Acionar `Run workflow`.
-4. Escolher o environment `homolog` ou `prod`.
-5. Preencher `confirm_destroy` com o valor exato `DESTROY`.
-6. Aprovar o deployment no environment selecionado.
+4. Escolher `action=cleanup-workloads` para remover workloads Kubernetes e Load Balancers antes dos destroys da Lambda e do banco.
+5. Escolher `action=destroy` para destruir EKS, API Gateway, ECR, VPC, subnets e rede no final do teardown.
+6. Escolher o environment `homolog` ou `prod`.
+7. Preencher `confirm_destroy` com o valor exato `DESTROY`.
 
-O workflow executa:
+Quando o environment selecionado possui required reviewers, o GitHub solicita aprovacao antes da execucao. No `homolog`, a execucao segue direto apos o `Run workflow` porque o environment nao possui aprovacao obrigatoria configurada.
+
+Com `action=cleanup-workloads`, o workflow executa:
 
 - leitura do state remoto Terraform em S3;
 - obtencao dos outputs `vpc_id` e `eks_cluster_name`;
 - remocao dos recursos Kubernetes da aplicacao no namespace `oficina`;
 - remocao de Load Balancers Classic e ELBv2 criados pelo Kubernetes dentro da VPC;
+- remocao de security groups orfaos criados por Services Kubernetes do tipo `LoadBalancer`.
+
+Com `action=destroy`, o workflow executa os passos acima e tambem:
+
 - execucao de `terraform destroy`;
 - remocao de security groups orfaos criados por Services Kubernetes do tipo `LoadBalancer`;
 - nova tentativa de `terraform destroy` para concluir a exclusao de subnets, internet gateway e VPC apos a limpeza de dependencias.
@@ -227,7 +234,7 @@ Esse fluxo cobre os recursos deste repositorio:
 - VPC, subnets, route tables, NAT/Internet Gateway e security groups gerenciados pelo Terraform;
 - recursos auxiliares criados pelo Kubernetes que impedem a exclusao completa da VPC quando ficam orfaos.
 
-A action nao e executada em push, Pull Request ou merge. O destroy real so ocorre por `workflow_dispatch`, com `confirm_destroy=DESTROY` e aprovacao do GitHub Environment.
+A action nao e executada em push, Pull Request ou merge. O cleanup e o destroy real so ocorrem por `workflow_dispatch` com `confirm_destroy=DESTROY`.
 
 O destroy deste repositorio nao remove recursos que pertencem a outros repositorios:
 
@@ -237,11 +244,11 @@ O destroy deste repositorio nao remove recursos que pertencem a outros repositor
 
 Para teardown completo do ambiente academico, a ordem operacional aplicada e:
 
-1. remover workloads da aplicacao no repo `oficina-dgcar-api`, evitando Services `LoadBalancer` e pods consumindo recursos do cluster;
+1. executar `Destroy Infra K8s` com `action=cleanup-workloads`, removendo workloads Kubernetes da aplicacao e Load Balancers publicados pelo Service `oficina-api`;
 2. executar `destroy-infra` no repo `oficina-dgcar-auth-lambda`, removendo Function, Log Group, IAM e security group da Lambda;
 3. executar `destroy` no repo `oficina-dgcar-infra-db`, removendo RDS PostgreSQL, subnet group e security group do banco;
 4. aguardar alguns minutos para a AWS liberar as ENIs gerenciadas da Lambda e do RDS;
-5. executar `Destroy Infra K8s` neste repositorio para finalizar EKS, API Gateway, ECR, VPC, subnets, rotas e recursos auxiliares criados pelo Kubernetes.
+5. executar `Destroy Infra K8s` com `action=destroy`, finalizando EKS, API Gateway, ECR, VPC, subnets, rotas e recursos auxiliares criados pelo Kubernetes.
 
 Essa ordem evita falhas por dependencia entre Load Balancers, security groups, subnets, Lambda, API Gateway e RDS. A rede fica por ultimo porque as subnets so podem ser removidas depois que as ENIs gerenciadas da Lambda e do RDS deixam de existir.
 
