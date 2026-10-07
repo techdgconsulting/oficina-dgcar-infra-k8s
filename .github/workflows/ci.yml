@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   validate:
-    name: validar terraform e manifests
+    name: validate
     runs-on: ubuntu-latest
 
     steps:
