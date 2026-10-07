@@ -130,7 +130,7 @@ jobs:
           set -euo pipefail
           scripts/aws/remove-load-balancers.sh "$VPC_ID"
 
-      - name: Remove API Gateway dependent routes
+      - name: Remove API Gateway dependent integrations
         working-directory: terraform
         env:
           TF_VAR_environment: homolog
@@ -140,7 +140,28 @@ jobs:
           TF_VAR_enable_github_actions_eks_access: "false"
           TF_VAR_github_actions_iam_user_arn: ""
           TF_VAR_github_actions_iam_user_name: ${{ secrets.GH_ACTIONS_IAM_USER_NAME || 'github-actions-oficina-dgcar' }}
-        run: terraform apply -auto-approve
+        run: |
+          set -euo pipefail
+
+          targets=()
+          for address in \
+            'aws_lambda_permission.allow_api_gateway_auth[0]' \
+            'aws_apigatewayv2_route.auth_cpf[0]' \
+            'aws_apigatewayv2_integration.auth_lambda[0]' \
+            'aws_apigatewayv2_route.app_proxy[0]' \
+            'aws_apigatewayv2_integration.app[0]'
+          do
+            if terraform state list | grep -Fxq "$address"; then
+              targets+=("-target=$address")
+            fi
+          done
+
+          if [ "${#targets[@]}" -eq 0 ]; then
+            echo "Integracoes dependentes do API Gateway ja estavam ausentes."
+            exit 0
+          fi
+
+          terraform destroy -auto-approve "${targets[@]}"
 
       - name: Destroy database infrastructure
         env:
