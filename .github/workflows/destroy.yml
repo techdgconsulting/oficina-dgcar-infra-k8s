@@ -3,6 +3,14 @@ name: Destroy Infra K8s
 on:
   workflow_dispatch:
     inputs:
+      action:
+        description: "Teardown action to run"
+        required: true
+        default: "cleanup-workloads"
+        type: choice
+        options:
+          - cleanup-workloads
+          - destroy
       environment:
         description: "Target environment"
         required: true
@@ -21,7 +29,7 @@ permissions:
 
 jobs:
   destroy:
-    name: destroy
+    name: ${{ inputs.action }}
     if: inputs.confirm_destroy == 'DESTROY'
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment }}
@@ -134,6 +142,7 @@ jobs:
           set -e
 
       - name: Terraform destroy
+        if: inputs.action == 'destroy'
         working-directory: terraform
         continue-on-error: true
         env:
@@ -177,7 +186,7 @@ jobs:
           set -e
 
       - name: Retry Terraform destroy after orphan cleanup
-        if: always()
+        if: always() && inputs.action == 'destroy'
         working-directory: terraform
         env:
           TF_VAR_environment: ${{ inputs.environment }}
