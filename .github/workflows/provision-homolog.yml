@@ -27,7 +27,7 @@ env:
   INFRA_DB_REPO: techdgconsulting/oficina-dgcar-infra-db
   AUTH_LAMBDA_REPO: techdgconsulting/oficina-dgcar-auth-lambda
   API_REPO: techdgconsulting/oficina-dgcar-api
-  INFRA_DB_WORKFLOW: ci.yml
+  INFRA_DB_WORKFLOW: terraform.yml
   AUTH_LAMBDA_WORKFLOW: ci.yml
   API_WORKFLOW: app-cd.yml
 
