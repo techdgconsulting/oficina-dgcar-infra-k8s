@@ -142,16 +142,6 @@ jobs:
           TF_VAR_github_actions_iam_user_name: ${{ secrets.GH_ACTIONS_IAM_USER_NAME || 'github-actions-oficina-dgcar' }}
         run: terraform apply -auto-approve
 
-      - name: Destroy Lambda infrastructure
-        env:
-          GH_TOKEN: ${{ secrets.GH_AUTOMATION_TOKEN }}
-        run: |
-          scripts/github-actions/dispatch-workflow.sh "$AUTH_LAMBDA_REPO" "$AUTH_LAMBDA_WORKFLOW" main \
-            -f action=destroy-infra \
-            -f environment="$TARGET_ENVIRONMENT" \
-            -f confirm_destroy=DESTROY
-          scripts/github-actions/wait-workflow.sh "$AUTH_LAMBDA_REPO" "$AUTH_LAMBDA_WORKFLOW" main
-
       - name: Destroy database infrastructure
         env:
           GH_TOKEN: ${{ secrets.GH_AUTOMATION_TOKEN }}
@@ -161,6 +151,16 @@ jobs:
             -f environment="$TARGET_ENVIRONMENT" \
             -f confirm_destroy=DESTROY
           scripts/github-actions/wait-workflow.sh "$INFRA_DB_REPO" "$INFRA_DB_WORKFLOW" main
+
+      - name: Destroy Lambda infrastructure
+        env:
+          GH_TOKEN: ${{ secrets.GH_AUTOMATION_TOKEN }}
+        run: |
+          scripts/github-actions/dispatch-workflow.sh "$AUTH_LAMBDA_REPO" "$AUTH_LAMBDA_WORKFLOW" main \
+            -f action=destroy-infra \
+            -f environment="$TARGET_ENVIRONMENT" \
+            -f confirm_destroy=DESTROY
+          scripts/github-actions/wait-workflow.sh "$AUTH_LAMBDA_REPO" "$AUTH_LAMBDA_WORKFLOW" main
 
       - name: Wait for VPC dependencies
         if: steps.tf_outputs.outputs.vpc_id != ''
