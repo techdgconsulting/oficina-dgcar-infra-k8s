@@ -215,7 +215,7 @@ jobs:
             -f environment="$TARGET_ENVIRONMENT"
           scripts/github-actions/wait-workflow.sh "$INFRA_DB_REPO" "$INFRA_DB_WORKFLOW" main
 
-      - name: Validate Lambda database access
+      - name: Ensure Lambda database access
         env:
           AUTH_LAMBDA_SECURITY_GROUP_ID: ${{ steps.db_access_outputs.outputs.auth_lambda_security_group_id }}
         run: |
@@ -240,12 +240,68 @@ jobs:
             --output text)"
 
           case " $ALLOWED_GROUP_IDS " in
-            *" $AUTH_LAMBDA_SECURITY_GROUP_ID "*) ;;
+            *" $AUTH_LAMBDA_SECURITY_GROUP_ID "*)
+              echo "RDS ja liberava PostgreSQL para a Lambda Auth CPF."
+              ;;
             *)
-              echo "::error::RDS nao liberou PostgreSQL para o security group atual da Lambda Auth CPF."
-              exit 1
+              echo "Liberando PostgreSQL no RDS para a Lambda Auth CPF."
+              aws ec2 authorize-security-group-ingress \
+                --region "$AWS_REGION" \
+                --group-id "$RDS_SECURITY_GROUP_ID" \
+                --ip-permissions "IpProtocol=tcp,FromPort=5432,ToPort=5432,UserIdGroupPairs=[{GroupId=${AUTH_LAMBDA_SECURITY_GROUP_ID},Description='PostgreSQL from Lambda Auth CPF'}]" \
+                || {
+                  status="$?"
+                  if aws ec2 describe-security-groups \
+                    --region "$AWS_REGION" \
+                    --group-ids "$RDS_SECURITY_GROUP_ID" \
+                    --query 'SecurityGroups[0].IpPermissions[?FromPort==`5432` && ToPort==`5432`].UserIdGroupPairs[].GroupId' \
+                    --output text | grep -qw "$AUTH_LAMBDA_SECURITY_GROUP_ID"; then
+                    echo "Regra ja estava presente apos tentativa de criacao."
+                  else
+                    exit "$status"
+                  fi
+                }
               ;;
           esac
+
+      - name: Validate Lambda database access
+        env:
+          AUTH_LAMBDA_SECURITY_GROUP_ID: ${{ steps.db_access_outputs.outputs.auth_lambda_security_group_id }}
+        run: |
+          set -euo pipefail
+
+          DB_IDENTIFIER="oficina-dgcar-homolog-postgres"
+          RDS_SECURITY_GROUP_ID="$(aws rds describe-db-instances \
+            --region "$AWS_REGION" \
+            --db-instance-identifier "$DB_IDENTIFIER" \
+            --query 'DBInstances[0].VpcSecurityGroups[0].VpcSecurityGroupId' \
+            --output text)"
+
+          if [ -z "$RDS_SECURITY_GROUP_ID" ] || [ "$RDS_SECURITY_GROUP_ID" = "None" ]; then
+            echo "::error::Security group do RDS nao foi encontrado."
+            exit 1
+          fi
+
+          for attempt in $(seq 1 12); do
+            ALLOWED_GROUP_IDS="$(aws ec2 describe-security-groups \
+              --region "$AWS_REGION" \
+              --group-ids "$RDS_SECURITY_GROUP_ID" \
+              --query 'SecurityGroups[0].IpPermissions[?FromPort==`5432` && ToPort==`5432`].UserIdGroupPairs[].GroupId' \
+              --output text)"
+
+            case " $ALLOWED_GROUP_IDS " in
+              *" $AUTH_LAMBDA_SECURITY_GROUP_ID "*) break ;;
+              *)
+                if [ "$attempt" -eq 12 ]; then
+                  echo "::error::RDS nao liberou PostgreSQL para o security group atual da Lambda Auth CPF."
+                  echo "Security groups encontrados na porta 5432: ${ALLOWED_GROUP_IDS:-nenhum}"
+                  exit 1
+                fi
+                echo "Aguardando regra PostgreSQL para a Lambda Auth CPF: tentativa $attempt/12"
+                sleep 5
+                ;;
+            esac
+          done
 
           echo "RDS liberado para a Lambda Auth CPF."
 
