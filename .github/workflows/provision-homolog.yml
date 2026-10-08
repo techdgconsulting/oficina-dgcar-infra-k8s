@@ -163,6 +163,49 @@ jobs:
             -f environment="$TARGET_ENVIRONMENT"
           scripts/github-actions/wait-workflow.sh "$AUTH_LAMBDA_REPO" "$AUTH_LAMBDA_WORKFLOW" main
 
+      - name: Publish Lambda database access
+        id: db_access_outputs
+        working-directory: terraform
+        env:
+          GH_TOKEN: ${{ secrets.GH_AUTOMATION_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          AUTH_LAMBDA_FUNCTION_NAME="oficina-dgcar-homolog-auth-cpf"
+          EKS_CLUSTER_SECURITY_GROUP_ID="$(terraform output -raw eks_cluster_security_group_id)"
+          AUTH_LAMBDA_SECURITY_GROUP_ID="$(aws lambda get-function-configuration \
+            --region "$AWS_REGION" \
+            --function-name "$AUTH_LAMBDA_FUNCTION_NAME" \
+            --query 'VpcConfig.SecurityGroupIds[0]' \
+            --output text)"
+
+          if [ -z "$EKS_CLUSTER_SECURITY_GROUP_ID" ] || [ "$EKS_CLUSTER_SECURITY_GROUP_ID" = "None" ]; then
+            echo "::error::Security group do EKS nao foi encontrado nos outputs do Terraform."
+            exit 1
+          fi
+
+          if [ -z "$AUTH_LAMBDA_SECURITY_GROUP_ID" ] || [ "$AUTH_LAMBDA_SECURITY_GROUP_ID" = "None" ]; then
+            echo "::error::Security group da Lambda Auth CPF nao foi encontrado na AWS."
+            exit 1
+          fi
+
+          ALLOWED_DB_SECURITY_GROUP_IDS="[\"${EKS_CLUSTER_SECURITY_GROUP_ID}\",\"${AUTH_LAMBDA_SECURITY_GROUP_ID}\"]"
+
+          case "$ALLOWED_DB_SECURITY_GROUP_IDS" in
+            *"$AUTH_LAMBDA_SECURITY_GROUP_ID"*) ;;
+            *)
+              echo "::error::Security group da Lambda nao entrou na lista ALLOWED_DB_SECURITY_GROUP_IDS."
+              exit 1
+              ;;
+          esac
+
+          gh secret set AUTH_LAMBDA_SECURITY_GROUP_ID --repo "$INFRA_DB_REPO" --env "$TARGET_ENVIRONMENT" --body "$AUTH_LAMBDA_SECURITY_GROUP_ID"
+          gh secret set ALLOWED_DB_SECURITY_GROUP_IDS --repo "$INFRA_DB_REPO" --env "$TARGET_ENVIRONMENT" --body "$ALLOWED_DB_SECURITY_GROUP_IDS"
+
+          echo "eks_security_group_id=$EKS_CLUSTER_SECURITY_GROUP_ID" >> "$GITHUB_OUTPUT"
+          echo "auth_lambda_security_group_id=$AUTH_LAMBDA_SECURITY_GROUP_ID" >> "$GITHUB_OUTPUT"
+          echo "Acesso do banco preparado para EKS e Lambda Auth CPF."
+
       - name: Release database access for Lambda
         env:
           GH_TOKEN: ${{ secrets.GH_AUTOMATION_TOKEN }}
@@ -171,6 +214,40 @@ jobs:
             -f action=apply \
             -f environment="$TARGET_ENVIRONMENT"
           scripts/github-actions/wait-workflow.sh "$INFRA_DB_REPO" "$INFRA_DB_WORKFLOW" main
+
+      - name: Validate Lambda database access
+        env:
+          AUTH_LAMBDA_SECURITY_GROUP_ID: ${{ steps.db_access_outputs.outputs.auth_lambda_security_group_id }}
+        run: |
+          set -euo pipefail
+
+          DB_IDENTIFIER="oficina-dgcar-homolog-postgres"
+          RDS_SECURITY_GROUP_ID="$(aws rds describe-db-instances \
+            --region "$AWS_REGION" \
+            --db-instance-identifier "$DB_IDENTIFIER" \
+            --query 'DBInstances[0].VpcSecurityGroups[0].VpcSecurityGroupId' \
+            --output text)"
+
+          if [ -z "$RDS_SECURITY_GROUP_ID" ] || [ "$RDS_SECURITY_GROUP_ID" = "None" ]; then
+            echo "::error::Security group do RDS nao foi encontrado."
+            exit 1
+          fi
+
+          ALLOWED_GROUP_IDS="$(aws ec2 describe-security-groups \
+            --region "$AWS_REGION" \
+            --group-ids "$RDS_SECURITY_GROUP_ID" \
+            --query 'SecurityGroups[0].IpPermissions[?FromPort==`5432` && ToPort==`5432`].UserIdGroupPairs[].GroupId' \
+            --output text)"
+
+          case " $ALLOWED_GROUP_IDS " in
+            *" $AUTH_LAMBDA_SECURITY_GROUP_ID "*) ;;
+            *)
+              echo "::error::RDS nao liberou PostgreSQL para o security group atual da Lambda Auth CPF."
+              exit 1
+              ;;
+          esac
+
+          echo "RDS liberado para a Lambda Auth CPF."
 
       - name: Deploy Lambda code
         env:
