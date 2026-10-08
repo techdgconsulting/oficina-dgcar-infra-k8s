@@ -239,30 +239,27 @@ jobs:
             --query 'SecurityGroups[0].IpPermissions[?FromPort==`5432` && ToPort==`5432`].UserIdGroupPairs[].GroupId' \
             --output text)"
 
-          case " $ALLOWED_GROUP_IDS " in
-            *" $AUTH_LAMBDA_SECURITY_GROUP_ID "*)
-              echo "RDS ja liberava PostgreSQL para a Lambda Auth CPF."
-              ;;
-            *)
-              echo "Liberando PostgreSQL no RDS para a Lambda Auth CPF."
-              aws ec2 authorize-security-group-ingress \
-                --region "$AWS_REGION" \
-                --group-id "$RDS_SECURITY_GROUP_ID" \
-                --ip-permissions "IpProtocol=tcp,FromPort=5432,ToPort=5432,UserIdGroupPairs=[{GroupId=${AUTH_LAMBDA_SECURITY_GROUP_ID},Description='PostgreSQL from Lambda Auth CPF'}]" \
-                || {
-                  status="$?"
-                  if aws ec2 describe-security-groups \
-                    --region "$AWS_REGION" \
-                    --group-ids "$RDS_SECURITY_GROUP_ID" \
-                    --query 'SecurityGroups[0].IpPermissions[?FromPort==`5432` && ToPort==`5432`].UserIdGroupPairs[].GroupId' \
-                    --output text | grep -qw "$AUTH_LAMBDA_SECURITY_GROUP_ID"; then
-                    echo "Regra ja estava presente apos tentativa de criacao."
-                  else
-                    exit "$status"
-                  fi
-                }
-              ;;
-          esac
+          if printf '%s\n' "$ALLOWED_GROUP_IDS" | tr '[:space:]' '\n' | grep -Fxq "$AUTH_LAMBDA_SECURITY_GROUP_ID"; then
+            echo "RDS ja liberava PostgreSQL para a Lambda Auth CPF."
+          else
+            echo "Liberando PostgreSQL no RDS para a Lambda Auth CPF."
+            aws ec2 authorize-security-group-ingress \
+              --region "$AWS_REGION" \
+              --group-id "$RDS_SECURITY_GROUP_ID" \
+              --ip-permissions "IpProtocol=tcp,FromPort=5432,ToPort=5432,UserIdGroupPairs=[{GroupId=${AUTH_LAMBDA_SECURITY_GROUP_ID},Description='PostgreSQL from Lambda Auth CPF'}]" \
+              || {
+                status="$?"
+                if aws ec2 describe-security-groups \
+                  --region "$AWS_REGION" \
+                  --group-ids "$RDS_SECURITY_GROUP_ID" \
+                  --query 'SecurityGroups[0].IpPermissions[?FromPort==`5432` && ToPort==`5432`].UserIdGroupPairs[].GroupId' \
+                  --output text | tr '[:space:]' '\n' | grep -Fxq "$AUTH_LAMBDA_SECURITY_GROUP_ID"; then
+                  echo "Regra ja estava presente apos tentativa de criacao."
+                else
+                  exit "$status"
+                fi
+              }
+          fi
 
       - name: Validate Lambda database access
         env:
@@ -289,18 +286,18 @@ jobs:
               --query 'SecurityGroups[0].IpPermissions[?FromPort==`5432` && ToPort==`5432`].UserIdGroupPairs[].GroupId' \
               --output text)"
 
-            case " $ALLOWED_GROUP_IDS " in
-              *" $AUTH_LAMBDA_SECURITY_GROUP_ID "*) break ;;
-              *)
-                if [ "$attempt" -eq 12 ]; then
-                  echo "::error::RDS nao liberou PostgreSQL para o security group atual da Lambda Auth CPF."
-                  echo "Security groups encontrados na porta 5432: ${ALLOWED_GROUP_IDS:-nenhum}"
-                  exit 1
-                fi
-                echo "Aguardando regra PostgreSQL para a Lambda Auth CPF: tentativa $attempt/12"
-                sleep 5
-                ;;
-            esac
+            if printf '%s\n' "$ALLOWED_GROUP_IDS" | tr '[:space:]' '\n' | grep -Fxq "$AUTH_LAMBDA_SECURITY_GROUP_ID"; then
+              break
+            fi
+
+            if [ "$attempt" -eq 12 ]; then
+              echo "::error::RDS nao liberou PostgreSQL para o security group atual da Lambda Auth CPF."
+              echo "Security groups encontrados na porta 5432: ${ALLOWED_GROUP_IDS:-nenhum}"
+              exit 1
+            fi
+
+            echo "Aguardando regra PostgreSQL para a Lambda Auth CPF: tentativa $attempt/12"
+            sleep 5
           done
 
           echo "RDS liberado para a Lambda Auth CPF."
