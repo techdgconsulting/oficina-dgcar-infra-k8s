@@ -4,7 +4,7 @@ Infraestrutura Kubernetes, registry, API Gateway e automacao operacional do ambi
 
 ## Proposito
 
-Este repositorio concentra a esteira oficial de criacao e remocao do ambiente AWS `homolog`.
+Este repositorio concentra as esteiras oficiais de criacao e remocao dos ambientes AWS `homolog` e `prod`.
 
 O provisionamento e o destroy nascem aqui. O repositorio de documentacao registra arquitetura e decisoes, mas nao executa infraestrutura.
 
@@ -107,6 +107,41 @@ O workflow remove:
 15. VPC.
 
 Ao final, a esteira valida EKS, API Gateway, ECR, VPC, RDS, Lambda, ENIs e snapshots residuais do projeto.
+
+### Provisionar Ambiente Prod
+
+Workflow:
+
+```text
+.github/workflows/provision-prod.yml
+```
+
+Execucao:
+
+```text
+Actions -> Provisionar Ambiente Prod -> Run workflow
+confirm=PROVISIONAR_PROD
+run_smoke_tests=false ou true
+```
+
+O workflow executa a mesma orquestracao de homolog usando o GitHub Environment `prod`, state remoto de producao e aprovacao manual configurada no environment.
+
+### Destruir Ambiente Prod
+
+Workflow:
+
+```text
+.github/workflows/destroy-prod.yml
+```
+
+Execucao:
+
+```text
+Actions -> Destruir Ambiente Prod -> Run workflow
+confirm=DESTRUIR_PROD
+```
+
+O workflow executa a mesma ordem segura de teardown de homolog usando o GitHub Environment `prod`. O banco de producao preserva o comportamento do repo `oficina-dgcar-infra-db`: deletion protection no apply e snapshot final no destroy.
 
 ## Preflight
 
