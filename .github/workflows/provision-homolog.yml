@@ -338,6 +338,16 @@ jobs:
           export TF_VAR_auth_lambda_invoke_arn="$AUTH_LAMBDA_INVOKE_ARN"
           terraform apply -auto-approve
 
+      - name: Ensure GitHub Actions EKS access
+        working-directory: terraform
+        env:
+          PRINCIPAL_ARN: ${{ secrets.GH_ACTIONS_IAM_USER_ARN }}
+        run: |
+          set -euo pipefail
+
+          EKS_CLUSTER_NAME="$(terraform output -raw eks_cluster_name)"
+          ../scripts/aws/ensure-eks-access.sh "$EKS_CLUSTER_NAME" "$PRINCIPAL_ARN"
+
       - name: Deploy application on EKS
         env:
           GH_TOKEN: ${{ secrets.GH_AUTOMATION_TOKEN }}
