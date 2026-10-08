@@ -25,14 +25,13 @@ if [ -n "$vpcs" ] && ! state_has_resource aws_vpc.main; then
   exit 1
 fi
 
+index=0
 for cidr in $EXPECTED_SUBNET_CIDRS; do
-  case "$cidr" in
-    10.40.1.0/24) subnet_address='aws_subnet.public[0]' ;;
-    10.40.2.0/24) subnet_address='aws_subnet.public[1]' ;;
-    10.40.11.0/24) subnet_address='aws_subnet.private[0]' ;;
-    10.40.12.0/24) subnet_address='aws_subnet.private[1]' ;;
-    *) subnet_address='' ;;
-  esac
+  if [ "$index" -lt 2 ]; then
+    subnet_address="aws_subnet.public[$index]"
+  else
+    subnet_address="aws_subnet.private[$((index - 2))]"
+  fi
 
   subnets="$(aws ec2 describe-subnets \
     --filters "Name=cidr-block,Values=${cidr}" \
@@ -46,6 +45,8 @@ for cidr in $EXPECTED_SUBNET_CIDRS; do
     echo "Endereco Terraform esperado: $subnet_address"
     exit 1
   fi
+
+  index=$((index + 1))
 done
 
 echo "Recursos residuais conflitantes nao encontrados."
