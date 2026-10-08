@@ -13,6 +13,8 @@ locals {
     var.auth_lambda_function_name != null &&
     trimspace(var.auth_lambda_function_name) != ""
   )
+
+  github_actions_iam_user_arn = var.github_actions_iam_user_arn == null ? "" : trimspace(var.github_actions_iam_user_arn)
 }
 
 resource "aws_vpc" "main" {
@@ -290,15 +292,15 @@ resource "aws_iam_user_policy" "github_actions_describe_cluster" {
 }
 
 resource "aws_eks_access_entry" "github_actions" {
-  count = var.enable_github_actions_eks_access && var.github_actions_iam_user_arn != null && var.github_actions_iam_user_arn != "" ? 1 : 0
+  count = var.enable_github_actions_eks_access && var.manage_github_actions_eks_access_entry && local.github_actions_iam_user_arn != "" ? 1 : 0
 
   cluster_name  = aws_eks_cluster.main.name
-  principal_arn = var.github_actions_iam_user_arn
+  principal_arn = local.github_actions_iam_user_arn
   type          = "STANDARD"
 }
 
 resource "aws_eks_access_policy_association" "github_actions_cluster_admin" {
-  count = var.enable_github_actions_eks_access && var.github_actions_iam_user_arn != null && var.github_actions_iam_user_arn != "" ? 1 : 0
+  count = var.enable_github_actions_eks_access && var.manage_github_actions_eks_access_entry && local.github_actions_iam_user_arn != "" ? 1 : 0
 
   cluster_name  = aws_eks_cluster.main.name
   principal_arn = aws_eks_access_entry.github_actions[0].principal_arn
