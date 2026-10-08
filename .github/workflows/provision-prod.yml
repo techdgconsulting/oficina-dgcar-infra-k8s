@@ -1,0 +1,405 @@
+name: Provisionar Ambiente Prod
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Digite PROVISIONAR_PROD para criar o ambiente prod"
+        required: true
+        type: string
+      run_smoke_tests:
+        description: "Executar smoke tests ao final"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ambiente-prod
+  cancel-in-progress: false
+
+env:
+  TARGET_ENVIRONMENT: prod
+  AWS_REGION: ${{ secrets.AWS_REGION || vars.AWS_REGION || 'us-east-1' }}
+  INFRA_K8S_REPO: techdgconsulting/oficina-dgcar-infra-k8s
+  INFRA_DB_REPO: techdgconsulting/oficina-dgcar-infra-db
+  AUTH_LAMBDA_REPO: techdgconsulting/oficina-dgcar-auth-lambda
+  API_REPO: techdgconsulting/oficina-dgcar-api
+  INFRA_DB_WORKFLOW: terraform.yml
+  AUTH_LAMBDA_WORKFLOW: ci.yml
+  API_WORKFLOW: app-cd.yml
+
+jobs:
+  provision:
+    name: provisionar prod
+    if: inputs.confirm == 'PROVISIONAR_PROD'
+    runs-on: ubuntu-latest
+    environment: prod
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Prepare shell scripts
+        run: find scripts -type f -name "*.sh" -exec chmod +x {} \;
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.15.8
+          terraform_wrapper: false
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Validate required configuration
+        env:
+          GH_AUTOMATION_TOKEN: ${{ secrets.GH_AUTOMATION_TOKEN }}
+          TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
+          TF_STATE_KEY: ${{ secrets.TF_STATE_KEY }}
+          GH_ACTIONS_IAM_USER_ARN: ${{ secrets.GH_ACTIONS_IAM_USER_ARN }}
+          GH_ACTIONS_IAM_USER_NAME: ${{ secrets.GH_ACTIONS_IAM_USER_NAME }}
+        run: |
+          scripts/preflight/check-required-secrets.sh \
+            AWS_ACCESS_KEY_ID \
+            AWS_SECRET_ACCESS_KEY \
+            AWS_REGION \
+            GH_AUTOMATION_TOKEN \
+            TF_STATE_BUCKET \
+            TF_STATE_KEY \
+            GH_ACTIONS_IAM_USER_ARN \
+            GH_ACTIONS_IAM_USER_NAME
+
+      - name: Validate AWS identity
+        run: scripts/preflight/check-aws-identity.sh
+
+      - name: Validate Terraform lock
+        env:
+          TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
+          TF_STATE_KEY: ${{ secrets.TF_STATE_KEY }}
+        run: scripts/preflight/check-terraform-lock.sh
+
+      - name: Terraform init with remote state
+        working-directory: terraform
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
+            -backend-config="key=${{ secrets.TF_STATE_KEY }}" \
+            -backend-config="region=${{ env.AWS_REGION }}" \
+            -backend-config="use_lockfile=true"
+
+      - name: Validate residual resources
+        env:
+          TF_DIR: terraform
+          PROJECT_NAME: oficina-dgcar
+          TARGET_ENVIRONMENT: prod
+          VPC_CIDR: 10.40.0.0/16
+          EXPECTED_SUBNET_CIDRS: "10.40.1.0/24 10.40.2.0/24 10.40.11.0/24 10.40.12.0/24"
+        run: scripts/preflight/check-residual-resources.sh
+
+      - name: Prepare failed EKS node group
+        env:
+          EKS_CLUSTER_NAME: oficina-dgcar-prod-eks
+          EKS_NODEGROUP_NAME: oficina-dgcar-prod-nodes
+        run: scripts/aws/delete-failed-eks-nodegroup.sh
+
+      - name: Provision network, EKS, ECR and API Gateway
+        working-directory: terraform
+        env:
+          TF_VAR_environment: prod
+          TF_VAR_api_backend_url: ""
+          TF_VAR_auth_lambda_invoke_arn: ""
+          TF_VAR_auth_lambda_function_name: ""
+          TF_VAR_enable_github_actions_eks_access: "true"
+          TF_VAR_github_actions_iam_user_arn: ${{ secrets.GH_ACTIONS_IAM_USER_ARN }}
+          TF_VAR_github_actions_iam_user_name: ${{ secrets.GH_ACTIONS_IAM_USER_NAME }}
+        run: terraform apply -auto-approve
+
+      - name: Publish network outputs
+        working-directory: terraform
+        env:
+          GH_TOKEN: ${{ secrets.GH_AUTOMATION_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          VPC_ID="$(terraform output -raw vpc_id)"
+          PRIVATE_SUBNET_IDS="$(terraform output -json private_subnet_ids)"
+          EKS_CLUSTER_NAME="$(terraform output -raw eks_cluster_name)"
+          ECR_REPOSITORY_URL="$(terraform output -raw ecr_repository_url)"
+          EKS_CLUSTER_SECURITY_GROUP_ID="$(terraform output -raw eks_cluster_security_group_id)"
+          ALLOWED_DB_SECURITY_GROUP_IDS="[\"${EKS_CLUSTER_SECURITY_GROUP_ID}\"]"
+
+          gh secret set VPC_ID --repo "$AUTH_LAMBDA_REPO" --env "$TARGET_ENVIRONMENT" --body "$VPC_ID"
+          gh secret set PRIVATE_SUBNET_IDS --repo "$AUTH_LAMBDA_REPO" --env "$TARGET_ENVIRONMENT" --body "$PRIVATE_SUBNET_IDS"
+
+          gh secret set VPC_ID --repo "$INFRA_DB_REPO" --env "$TARGET_ENVIRONMENT" --body "$VPC_ID"
+          gh secret set PRIVATE_SUBNET_IDS --repo "$INFRA_DB_REPO" --env "$TARGET_ENVIRONMENT" --body "$PRIVATE_SUBNET_IDS"
+          gh secret set ALLOWED_DB_SECURITY_GROUP_IDS --repo "$INFRA_DB_REPO" --env "$TARGET_ENVIRONMENT" --body "$ALLOWED_DB_SECURITY_GROUP_IDS"
+
+          gh secret set ECR_REPOSITORY --repo "$API_REPO" --env "$TARGET_ENVIRONMENT" --body "$ECR_REPOSITORY_URL"
+          gh secret set EKS_CLUSTER_NAME --repo "$API_REPO" --env "$TARGET_ENVIRONMENT" --body "$EKS_CLUSTER_NAME"
+
+      - name: Provision database
+        env:
+          GH_TOKEN: ${{ secrets.GH_AUTOMATION_TOKEN }}
+        run: |
+          scripts/github-actions/dispatch-workflow.sh "$INFRA_DB_REPO" "$INFRA_DB_WORKFLOW" main \
+            -f action=apply \
+            -f environment="$TARGET_ENVIRONMENT"
+          scripts/github-actions/wait-workflow.sh "$INFRA_DB_REPO" "$INFRA_DB_WORKFLOW" main
+
+      - name: Provision Lambda infrastructure
+        env:
+          GH_TOKEN: ${{ secrets.GH_AUTOMATION_TOKEN }}
+        run: |
+          scripts/github-actions/dispatch-workflow.sh "$AUTH_LAMBDA_REPO" "$AUTH_LAMBDA_WORKFLOW" main \
+            -f action=apply-infra \
+            -f environment="$TARGET_ENVIRONMENT"
+          scripts/github-actions/wait-workflow.sh "$AUTH_LAMBDA_REPO" "$AUTH_LAMBDA_WORKFLOW" main
+
+      - name: Publish Lambda database access
+        id: db_access_outputs
+        working-directory: terraform
+        env:
+          GH_TOKEN: ${{ secrets.GH_AUTOMATION_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          AUTH_LAMBDA_FUNCTION_NAME="oficina-dgcar-prod-auth-cpf"
+          EKS_CLUSTER_SECURITY_GROUP_ID="$(terraform output -raw eks_cluster_security_group_id)"
+          AUTH_LAMBDA_SECURITY_GROUP_ID="$(aws lambda get-function-configuration \
+            --region "$AWS_REGION" \
+            --function-name "$AUTH_LAMBDA_FUNCTION_NAME" \
+            --query 'VpcConfig.SecurityGroupIds[0]' \
+            --output text)"
+
+          if [ -z "$EKS_CLUSTER_SECURITY_GROUP_ID" ] || [ "$EKS_CLUSTER_SECURITY_GROUP_ID" = "None" ]; then
+            echo "::error::Security group do EKS nao foi encontrado nos outputs do Terraform."
+            exit 1
+          fi
+
+          if [ -z "$AUTH_LAMBDA_SECURITY_GROUP_ID" ] || [ "$AUTH_LAMBDA_SECURITY_GROUP_ID" = "None" ]; then
+            echo "::error::Security group da Lambda Auth CPF nao foi encontrado na AWS."
+            exit 1
+          fi
+
+          ALLOWED_DB_SECURITY_GROUP_IDS="[\"${EKS_CLUSTER_SECURITY_GROUP_ID}\",\"${AUTH_LAMBDA_SECURITY_GROUP_ID}\"]"
+
+          case "$ALLOWED_DB_SECURITY_GROUP_IDS" in
+            *"$AUTH_LAMBDA_SECURITY_GROUP_ID"*) ;;
+            *)
+              echo "::error::Security group da Lambda nao entrou na lista ALLOWED_DB_SECURITY_GROUP_IDS."
+              exit 1
+              ;;
+          esac
+
+          gh secret set AUTH_LAMBDA_SECURITY_GROUP_ID --repo "$INFRA_DB_REPO" --env "$TARGET_ENVIRONMENT" --body "$AUTH_LAMBDA_SECURITY_GROUP_ID"
+          gh secret set ALLOWED_DB_SECURITY_GROUP_IDS --repo "$INFRA_DB_REPO" --env "$TARGET_ENVIRONMENT" --body "$ALLOWED_DB_SECURITY_GROUP_IDS"
+
+          echo "eks_security_group_id=$EKS_CLUSTER_SECURITY_GROUP_ID" >> "$GITHUB_OUTPUT"
+          echo "auth_lambda_security_group_id=$AUTH_LAMBDA_SECURITY_GROUP_ID" >> "$GITHUB_OUTPUT"
+          echo "Acesso do banco preparado para EKS e Lambda Auth CPF."
+
+      - name: Release database access for Lambda
+        env:
+          GH_TOKEN: ${{ secrets.GH_AUTOMATION_TOKEN }}
+        run: |
+          scripts/github-actions/dispatch-workflow.sh "$INFRA_DB_REPO" "$INFRA_DB_WORKFLOW" main \
+            -f action=apply \
+            -f environment="$TARGET_ENVIRONMENT"
+          scripts/github-actions/wait-workflow.sh "$INFRA_DB_REPO" "$INFRA_DB_WORKFLOW" main
+
+      - name: Ensure Lambda database access
+        env:
+          AUTH_LAMBDA_SECURITY_GROUP_ID: ${{ steps.db_access_outputs.outputs.auth_lambda_security_group_id }}
+        run: |
+          set -euo pipefail
+
+          DB_IDENTIFIER="oficina-dgcar-prod-postgres"
+          RDS_SECURITY_GROUP_ID="$(aws rds describe-db-instances \
+            --region "$AWS_REGION" \
+            --db-instance-identifier "$DB_IDENTIFIER" \
+            --query 'DBInstances[0].VpcSecurityGroups[0].VpcSecurityGroupId' \
+            --output text)"
+
+          if [ -z "$RDS_SECURITY_GROUP_ID" ] || [ "$RDS_SECURITY_GROUP_ID" = "None" ]; then
+            echo "::error::Security group do RDS nao foi encontrado."
+            exit 1
+          fi
+
+          ALLOWED_GROUP_IDS="$(aws ec2 describe-security-groups \
+            --region "$AWS_REGION" \
+            --group-ids "$RDS_SECURITY_GROUP_ID" \
+            --query 'SecurityGroups[0].IpPermissions[?FromPort==`5432` && ToPort==`5432`].UserIdGroupPairs[].GroupId' \
+            --output text)"
+
+          if printf '%s\n' "$ALLOWED_GROUP_IDS" | tr '[:space:]' '\n' | grep -Fxq "$AUTH_LAMBDA_SECURITY_GROUP_ID"; then
+            echo "RDS ja liberava PostgreSQL para a Lambda Auth CPF."
+          else
+            echo "Liberando PostgreSQL no RDS para a Lambda Auth CPF."
+            aws ec2 authorize-security-group-ingress \
+              --region "$AWS_REGION" \
+              --group-id "$RDS_SECURITY_GROUP_ID" \
+              --ip-permissions "IpProtocol=tcp,FromPort=5432,ToPort=5432,UserIdGroupPairs=[{GroupId=${AUTH_LAMBDA_SECURITY_GROUP_ID},Description='PostgreSQL from Lambda Auth CPF'}]" \
+              || {
+                status="$?"
+                if aws ec2 describe-security-groups \
+                  --region "$AWS_REGION" \
+                  --group-ids "$RDS_SECURITY_GROUP_ID" \
+                  --query 'SecurityGroups[0].IpPermissions[?FromPort==`5432` && ToPort==`5432`].UserIdGroupPairs[].GroupId' \
+                  --output text | tr '[:space:]' '\n' | grep -Fxq "$AUTH_LAMBDA_SECURITY_GROUP_ID"; then
+                  echo "Regra ja estava presente apos tentativa de criacao."
+                else
+                  exit "$status"
+                fi
+              }
+          fi
+
+      - name: Validate Lambda database access
+        env:
+          AUTH_LAMBDA_SECURITY_GROUP_ID: ${{ steps.db_access_outputs.outputs.auth_lambda_security_group_id }}
+        run: |
+          set -euo pipefail
+
+          DB_IDENTIFIER="oficina-dgcar-prod-postgres"
+          RDS_SECURITY_GROUP_ID="$(aws rds describe-db-instances \
+            --region "$AWS_REGION" \
+            --db-instance-identifier "$DB_IDENTIFIER" \
+            --query 'DBInstances[0].VpcSecurityGroups[0].VpcSecurityGroupId' \
+            --output text)"
+
+          if [ -z "$RDS_SECURITY_GROUP_ID" ] || [ "$RDS_SECURITY_GROUP_ID" = "None" ]; then
+            echo "::error::Security group do RDS nao foi encontrado."
+            exit 1
+          fi
+
+          for attempt in $(seq 1 12); do
+            ALLOWED_GROUP_IDS="$(aws ec2 describe-security-groups \
+              --region "$AWS_REGION" \
+              --group-ids "$RDS_SECURITY_GROUP_ID" \
+              --query 'SecurityGroups[0].IpPermissions[?FromPort==`5432` && ToPort==`5432`].UserIdGroupPairs[].GroupId' \
+              --output text)"
+
+            if printf '%s\n' "$ALLOWED_GROUP_IDS" | tr '[:space:]' '\n' | grep -Fxq "$AUTH_LAMBDA_SECURITY_GROUP_ID"; then
+              break
+            fi
+
+            if [ "$attempt" -eq 12 ]; then
+              echo "::error::RDS nao liberou PostgreSQL para o security group atual da Lambda Auth CPF."
+              echo "Security groups encontrados na porta 5432: ${ALLOWED_GROUP_IDS:-nenhum}"
+              exit 1
+            fi
+
+            echo "Aguardando regra PostgreSQL para a Lambda Auth CPF: tentativa $attempt/12"
+            sleep 5
+          done
+
+          echo "RDS liberado para a Lambda Auth CPF."
+
+      - name: Deploy Lambda code
+        env:
+          GH_TOKEN: ${{ secrets.GH_AUTOMATION_TOKEN }}
+        run: |
+          scripts/github-actions/dispatch-workflow.sh "$AUTH_LAMBDA_REPO" "$AUTH_LAMBDA_WORKFLOW" main \
+            -f action=deploy-code \
+            -f environment="$TARGET_ENVIRONMENT"
+          scripts/github-actions/wait-workflow.sh "$AUTH_LAMBDA_REPO" "$AUTH_LAMBDA_WORKFLOW" main
+
+      - name: Integrate API Gateway with Lambda
+        id: lambda_outputs
+        working-directory: terraform
+        env:
+          TF_VAR_environment: prod
+          TF_VAR_api_backend_url: ""
+          TF_VAR_enable_github_actions_eks_access: "true"
+          TF_VAR_github_actions_iam_user_arn: ${{ secrets.GH_ACTIONS_IAM_USER_ARN }}
+          TF_VAR_github_actions_iam_user_name: ${{ secrets.GH_ACTIONS_IAM_USER_NAME }}
+        run: |
+          set -euo pipefail
+
+          AUTH_LAMBDA_FUNCTION_NAME="oficina-dgcar-prod-auth-cpf"
+          AUTH_LAMBDA_FUNCTION_ARN="$(aws lambda get-function \
+            --region "$AWS_REGION" \
+            --function-name "$AUTH_LAMBDA_FUNCTION_NAME" \
+            --query 'Configuration.FunctionArn' \
+            --output text)"
+          AUTH_LAMBDA_INVOKE_ARN="arn:aws:apigateway:${AWS_REGION}:lambda:path/2015-03-31/functions/${AUTH_LAMBDA_FUNCTION_ARN}/invocations"
+
+          echo "auth_lambda_function_name=$AUTH_LAMBDA_FUNCTION_NAME" >> "$GITHUB_OUTPUT"
+          echo "auth_lambda_invoke_arn=$AUTH_LAMBDA_INVOKE_ARN" >> "$GITHUB_OUTPUT"
+
+          export TF_VAR_auth_lambda_function_name="$AUTH_LAMBDA_FUNCTION_NAME"
+          export TF_VAR_auth_lambda_invoke_arn="$AUTH_LAMBDA_INVOKE_ARN"
+          terraform apply -auto-approve
+
+      - name: Deploy application on EKS
+        env:
+          GH_TOKEN: ${{ secrets.GH_AUTOMATION_TOKEN }}
+        run: |
+          scripts/github-actions/dispatch-workflow.sh "$API_REPO" "$API_WORKFLOW" main \
+            -f environment="$TARGET_ENVIRONMENT"
+          scripts/github-actions/wait-workflow.sh "$API_REPO" "$API_WORKFLOW" main
+
+      - name: Integrate API Gateway with application
+        id: backend_outputs
+        working-directory: terraform
+        env:
+          TF_VAR_environment: prod
+          TF_VAR_auth_lambda_invoke_arn: ${{ steps.lambda_outputs.outputs.auth_lambda_invoke_arn }}
+          TF_VAR_auth_lambda_function_name: ${{ steps.lambda_outputs.outputs.auth_lambda_function_name }}
+          TF_VAR_enable_github_actions_eks_access: "true"
+          TF_VAR_github_actions_iam_user_arn: ${{ secrets.GH_ACTIONS_IAM_USER_ARN }}
+          TF_VAR_github_actions_iam_user_name: ${{ secrets.GH_ACTIONS_IAM_USER_NAME }}
+        run: |
+          set -euo pipefail
+
+          EKS_CLUSTER_NAME="$(terraform output -raw eks_cluster_name)"
+          aws eks update-kubeconfig --region "$AWS_REGION" --name "$EKS_CLUSTER_NAME"
+
+          BACKEND_HOST=""
+          for attempt in $(seq 1 30); do
+            BACKEND_HOST="$(kubectl get svc oficina-api -n oficina -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)"
+            if [ -n "$BACKEND_HOST" ]; then
+              break
+            fi
+            echo "Aguardando endpoint do LoadBalancer da aplicacao: tentativa $attempt/30"
+            sleep 10
+          done
+
+          if [ -z "$BACKEND_HOST" ]; then
+            echo "::error::A aplicacao foi publicada no EKS, mas o Service oficina-api ainda nao expos LoadBalancer."
+            exit 1
+          fi
+
+          API_BACKEND_URL="http://${BACKEND_HOST}"
+          GATEWAY_BASE_URL="$(terraform output -raw api_gateway_endpoint)"
+          echo "api_backend_url=$API_BACKEND_URL" >> "$GITHUB_OUTPUT"
+          echo "gateway_base_url=$GATEWAY_BASE_URL" >> "$GITHUB_OUTPUT"
+          export TF_VAR_api_backend_url="$API_BACKEND_URL"
+          terraform apply -auto-approve
+
+      - name: Validate final outputs
+        working-directory: terraform
+        run: |
+          set -euo pipefail
+          terraform output -raw vpc_id
+          terraform output -raw eks_cluster_name
+          terraform output -raw ecr_repository_url
+          terraform output -raw api_gateway_id
+          terraform output -raw api_gateway_endpoint
+
+      - name: Run smoke tests
+        if: inputs.run_smoke_tests
+        env:
+          GATEWAY_BASE_URL: ${{ steps.backend_outputs.outputs.gateway_base_url }}
+          CLIENT_TEST_CPF: ${{ secrets.CLIENT_TEST_CPF || vars.CLIENT_TEST_CPF }}
+          CLIENT_TEST_PASSWORD: ${{ secrets.CLIENT_TEST_PASSWORD }}
+          CLIENT_TEST_OS_NUMBER: ${{ secrets.CLIENT_TEST_OS_NUMBER || vars.CLIENT_TEST_OS_NUMBER }}
+          CLIENT_OTHER_OS_NUMBER: ${{ secrets.CLIENT_OTHER_OS_NUMBER || vars.CLIENT_OTHER_OS_NUMBER }}
+        run: scripts/smoke/smoke-tests.sh
