@@ -94,6 +94,12 @@ variable "node_disk_size" {
   default     = 20
 }
 
+variable "ecr_repository_name" {
+  description = "ECR repository name for the application image. It must be unique per AWS account and region."
+  type        = string
+  default     = "oficina-dgcar/oficina-api"
+}
+
 variable "enable_github_actions_eks_access" {
   description = "Whether Terraform should configure IAM/EKS permissions for the GitHub Actions deployment user."
   type        = bool
