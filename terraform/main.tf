@@ -119,7 +119,7 @@ resource "aws_security_group" "eks_cluster" {
 }
 
 resource "aws_ecr_repository" "app" {
-  name                 = "${var.project_name}/oficina-api"
+  name                 = var.ecr_repository_name
   image_tag_mutability = "MUTABLE"
   force_delete         = true
 
