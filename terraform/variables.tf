@@ -112,6 +112,12 @@ variable "github_actions_iam_user_arn" {
   default     = null
 }
 
+variable "manage_github_actions_eks_access_entry" {
+  description = "Whether Terraform should create an explicit EKS access entry for the GitHub Actions user. Keep false when the same principal creates the cluster and receives bootstrap admin access."
+  type        = bool
+  default     = false
+}
+
 variable "enable_api_gateway" {
   description = "Whether to create the HTTP API Gateway entrypoint."
   type        = bool
