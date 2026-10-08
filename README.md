@@ -165,6 +165,8 @@ Eles validam:
 
 Quando existe recurso residual conflitante, o provisionamento para antes do `apply`.
 
+O ECR tambem e separado por ambiente quando ambos coexistem na mesma conta AWS: `homolog` mantem `oficina-dgcar/oficina-api` e `prod` usa `oficina-dgcar/prod-oficina-api`.
+
 ## Secrets E Variables
 
 Secrets esperados no environment `homolog` deste repositorio:

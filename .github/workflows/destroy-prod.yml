@@ -90,6 +90,7 @@ jobs:
           TF_VAR_vpc_cidr: 10.50.0.0/16
           TF_VAR_public_subnet_cidrs: '["10.50.1.0/24","10.50.2.0/24"]'
           TF_VAR_private_subnet_cidrs: '["10.50.11.0/24","10.50.12.0/24"]'
+          TF_VAR_ecr_repository_name: oficina-dgcar/prod-oficina-api
           TF_VAR_api_backend_url: ""
           TF_VAR_auth_lambda_invoke_arn: ""
           TF_VAR_auth_lambda_function_name: ""
@@ -140,6 +141,7 @@ jobs:
           TF_VAR_vpc_cidr: 10.50.0.0/16
           TF_VAR_public_subnet_cidrs: '["10.50.1.0/24","10.50.2.0/24"]'
           TF_VAR_private_subnet_cidrs: '["10.50.11.0/24","10.50.12.0/24"]'
+          TF_VAR_ecr_repository_name: oficina-dgcar/prod-oficina-api
           TF_VAR_api_backend_url: ""
           TF_VAR_auth_lambda_invoke_arn: ""
           TF_VAR_auth_lambda_function_name: ""
@@ -202,6 +204,7 @@ jobs:
           TF_VAR_vpc_cidr: 10.50.0.0/16
           TF_VAR_public_subnet_cidrs: '["10.50.1.0/24","10.50.2.0/24"]'
           TF_VAR_private_subnet_cidrs: '["10.50.11.0/24","10.50.12.0/24"]'
+          TF_VAR_ecr_repository_name: oficina-dgcar/prod-oficina-api
           TF_VAR_api_backend_url: ""
           TF_VAR_auth_lambda_invoke_arn: ""
           TF_VAR_auth_lambda_function_name: ""
