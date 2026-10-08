@@ -159,8 +159,8 @@ Eles validam:
 - ausencia de `.tflock`;
 - secrets e variables obrigatorios;
 - environments do GitHub;
-- VPC residual com CIDR `10.40.0.0/16`;
-- subnets residuais com CIDRs `10.40.1.0/24`, `10.40.2.0/24`, `10.40.11.0/24` e `10.40.12.0/24`;
+- VPC residual com CIDR do ambiente (`10.40.0.0/16` em `homolog`, `10.50.0.0/16` em `prod`);
+- subnets residuais com CIDRs do ambiente;
 - dependencias de VPC durante destroy.
 
 Quando existe recurso residual conflitante, o provisionamento para antes do `apply`.

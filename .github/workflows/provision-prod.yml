@@ -99,8 +99,8 @@ jobs:
           TF_DIR: terraform
           PROJECT_NAME: oficina-dgcar
           TARGET_ENVIRONMENT: prod
-          VPC_CIDR: 10.40.0.0/16
-          EXPECTED_SUBNET_CIDRS: "10.40.1.0/24 10.40.2.0/24 10.40.11.0/24 10.40.12.0/24"
+          VPC_CIDR: 10.50.0.0/16
+          EXPECTED_SUBNET_CIDRS: "10.50.1.0/24 10.50.2.0/24 10.50.11.0/24 10.50.12.0/24"
         run: scripts/preflight/check-residual-resources.sh
 
       - name: Prepare failed EKS node group
@@ -113,6 +113,9 @@ jobs:
         working-directory: terraform
         env:
           TF_VAR_environment: prod
+          TF_VAR_vpc_cidr: 10.50.0.0/16
+          TF_VAR_public_subnet_cidrs: '["10.50.1.0/24","10.50.2.0/24"]'
+          TF_VAR_private_subnet_cidrs: '["10.50.11.0/24","10.50.12.0/24"]'
           TF_VAR_api_backend_url: ""
           TF_VAR_auth_lambda_invoke_arn: ""
           TF_VAR_auth_lambda_function_name: ""
@@ -316,6 +319,9 @@ jobs:
         working-directory: terraform
         env:
           TF_VAR_environment: prod
+          TF_VAR_vpc_cidr: 10.50.0.0/16
+          TF_VAR_public_subnet_cidrs: '["10.50.1.0/24","10.50.2.0/24"]'
+          TF_VAR_private_subnet_cidrs: '["10.50.11.0/24","10.50.12.0/24"]'
           TF_VAR_api_backend_url: ""
           TF_VAR_enable_github_actions_eks_access: "true"
           TF_VAR_github_actions_iam_user_arn: ${{ secrets.GH_ACTIONS_IAM_USER_ARN }}
@@ -351,6 +357,9 @@ jobs:
         working-directory: terraform
         env:
           TF_VAR_environment: prod
+          TF_VAR_vpc_cidr: 10.50.0.0/16
+          TF_VAR_public_subnet_cidrs: '["10.50.1.0/24","10.50.2.0/24"]'
+          TF_VAR_private_subnet_cidrs: '["10.50.11.0/24","10.50.12.0/24"]'
           TF_VAR_auth_lambda_invoke_arn: ${{ steps.lambda_outputs.outputs.auth_lambda_invoke_arn }}
           TF_VAR_auth_lambda_function_name: ${{ steps.lambda_outputs.outputs.auth_lambda_function_name }}
           TF_VAR_enable_github_actions_eks_access: "true"
