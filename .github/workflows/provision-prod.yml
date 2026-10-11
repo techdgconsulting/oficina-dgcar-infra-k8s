@@ -1,6 +1,14 @@
 name: Provisionar Ambiente Prod
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - "terraform/**"
+      - "scripts/**"
+      - "k8s/**"
+      - ".github/workflows/provision-prod.yml"
   workflow_dispatch:
     inputs:
       confirm:
@@ -22,6 +30,7 @@ concurrency:
 
 env:
   TARGET_ENVIRONMENT: prod
+  DEPLOY_REF: main
   AWS_REGION: ${{ secrets.AWS_REGION || vars.AWS_REGION || 'us-east-1' }}
   INFRA_K8S_REPO: techdgconsulting/oficina-dgcar-infra-k8s
   INFRA_DB_REPO: techdgconsulting/oficina-dgcar-infra-db
@@ -34,7 +43,7 @@ env:
 jobs:
   provision:
     name: provisionar prod
-    if: inputs.confirm == 'PROVISIONAR_PROD'
+    if: github.event_name == 'push' || github.event.inputs.confirm == 'PROVISIONAR_PROD'
     runs-on: ubuntu-latest
     environment: prod
 
@@ -153,19 +162,19 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GH_AUTOMATION_TOKEN }}
         run: |
-          scripts/github-actions/dispatch-workflow.sh "$INFRA_DB_REPO" "$INFRA_DB_WORKFLOW" main \
+          scripts/github-actions/dispatch-workflow.sh "$INFRA_DB_REPO" "$INFRA_DB_WORKFLOW" "$DEPLOY_REF" \
             -f action=apply \
             -f environment="$TARGET_ENVIRONMENT"
-          scripts/github-actions/wait-workflow.sh "$INFRA_DB_REPO" "$INFRA_DB_WORKFLOW" main
+          scripts/github-actions/wait-workflow.sh "$INFRA_DB_REPO" "$INFRA_DB_WORKFLOW" "$DEPLOY_REF"
 
       - name: Provision Lambda infrastructure
         env:
           GH_TOKEN: ${{ secrets.GH_AUTOMATION_TOKEN }}
         run: |
-          scripts/github-actions/dispatch-workflow.sh "$AUTH_LAMBDA_REPO" "$AUTH_LAMBDA_WORKFLOW" main \
+          scripts/github-actions/dispatch-workflow.sh "$AUTH_LAMBDA_REPO" "$AUTH_LAMBDA_WORKFLOW" "$DEPLOY_REF" \
             -f action=apply-infra \
             -f environment="$TARGET_ENVIRONMENT"
-          scripts/github-actions/wait-workflow.sh "$AUTH_LAMBDA_REPO" "$AUTH_LAMBDA_WORKFLOW" main
+          scripts/github-actions/wait-workflow.sh "$AUTH_LAMBDA_REPO" "$AUTH_LAMBDA_WORKFLOW" "$DEPLOY_REF"
 
       - name: Publish Lambda database access
         id: db_access_outputs
@@ -214,10 +223,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GH_AUTOMATION_TOKEN }}
         run: |
-          scripts/github-actions/dispatch-workflow.sh "$INFRA_DB_REPO" "$INFRA_DB_WORKFLOW" main \
+          scripts/github-actions/dispatch-workflow.sh "$INFRA_DB_REPO" "$INFRA_DB_WORKFLOW" "$DEPLOY_REF" \
             -f action=apply \
             -f environment="$TARGET_ENVIRONMENT"
-          scripts/github-actions/wait-workflow.sh "$INFRA_DB_REPO" "$INFRA_DB_WORKFLOW" main
+          scripts/github-actions/wait-workflow.sh "$INFRA_DB_REPO" "$INFRA_DB_WORKFLOW" "$DEPLOY_REF"
 
       - name: Ensure Lambda database access
         env:
@@ -310,10 +319,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GH_AUTOMATION_TOKEN }}
         run: |
-          scripts/github-actions/dispatch-workflow.sh "$AUTH_LAMBDA_REPO" "$AUTH_LAMBDA_WORKFLOW" main \
+          scripts/github-actions/dispatch-workflow.sh "$AUTH_LAMBDA_REPO" "$AUTH_LAMBDA_WORKFLOW" "$DEPLOY_REF" \
             -f action=deploy-code \
             -f environment="$TARGET_ENVIRONMENT"
-          scripts/github-actions/wait-workflow.sh "$AUTH_LAMBDA_REPO" "$AUTH_LAMBDA_WORKFLOW" main
+          scripts/github-actions/wait-workflow.sh "$AUTH_LAMBDA_REPO" "$AUTH_LAMBDA_WORKFLOW" "$DEPLOY_REF"
 
       - name: Integrate API Gateway with Lambda
         id: lambda_outputs
@@ -379,9 +388,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GH_AUTOMATION_TOKEN }}
         run: |
-          scripts/github-actions/dispatch-workflow.sh "$API_REPO" "$API_WORKFLOW" main \
+          scripts/github-actions/dispatch-workflow.sh "$API_REPO" "$API_WORKFLOW" "$DEPLOY_REF" \
             -f environment="$TARGET_ENVIRONMENT"
-          scripts/github-actions/wait-workflow.sh "$API_REPO" "$API_WORKFLOW" main
+          scripts/github-actions/wait-workflow.sh "$API_REPO" "$API_WORKFLOW" "$DEPLOY_REF"
 
       - name: Integrate API Gateway with application
         id: backend_outputs
@@ -436,7 +445,7 @@ jobs:
           terraform output -raw api_gateway_endpoint
 
       - name: Run smoke tests
-        if: inputs.run_smoke_tests
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.run_smoke_tests == 'true'
         env:
           GATEWAY_BASE_URL: ${{ steps.backend_outputs.outputs.gateway_base_url }}
           CLIENT_TEST_CPF: ${{ secrets.CLIENT_TEST_CPF || vars.CLIENT_TEST_CPF }}

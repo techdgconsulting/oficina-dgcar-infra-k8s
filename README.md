@@ -47,13 +47,14 @@ Workflow:
 .github/workflows/provision-homolog.yml
 ```
 
-Execucao:
+Execucao automatica:
 
 ```text
-Actions -> Provisionar Ambiente Homolog -> Run workflow
-confirm=PROVISIONAR
-run_smoke_tests=false ou true
+feature/* -> PR -> homolog
+merge em homolog -> Provisionar Ambiente Homolog
 ```
+
+O workflow tambem pode ser reexecutado manualmente por `workflow_dispatch` com `confirm=PROVISIONAR`.
 
 O workflow executa:
 
@@ -117,13 +118,14 @@ Workflow:
 .github/workflows/provision-prod.yml
 ```
 
-Execucao:
+Execucao automatica:
 
 ```text
-Actions -> Provisionar Ambiente Prod -> Run workflow
-confirm=PROVISIONAR_PROD
-run_smoke_tests=false ou true
+homolog -> PR -> main
+merge em main -> Provisionar Ambiente Prod
 ```
+
+O workflow tambem pode ser reexecutado manualmente por `workflow_dispatch` com `confirm=PROVISIONAR_PROD`.
 
 O workflow executa a mesma orquestracao de homolog usando o GitHub Environment `prod`, state remoto de producao e aprovacao manual configurada no environment.
 

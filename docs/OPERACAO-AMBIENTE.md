@@ -8,7 +8,7 @@ O provisionamento e o teardown sao centralizados no repositorio `oficina-dgcar-i
 
 | Operacao | Repositorio | Workflow | Ambiente | Confirmacao |
 |---|---|---|---|---|
-| Provisionamento completo | `oficina-dgcar-infra-k8s` | `Provisionar Ambiente Homolog` / `Provisionar Ambiente Prod` | `homolog` / `prod` | `PROVISIONAR` |
+| Provisionamento completo | `oficina-dgcar-infra-k8s` | `Provisionar Ambiente Homolog` / `Provisionar Ambiente Prod` | `homolog` / `prod` | Automatico por branch ou `PROVISIONAR` |
 | Teardown completo | `oficina-dgcar-infra-k8s` | `Destruir Ambiente Homolog` / `Destruir Ambiente Prod` | `homolog` / `prod` | `DESTROY` |
 
 ## Secrets Da Esteira Central
@@ -45,15 +45,14 @@ O provisionamento de infraestrutura nao depende desses valores.
 
 ## Provisionamento Completo
 
-Execucao:
+Execucao automatica:
 
 ```text
-Repositorio: oficina-dgcar-infra-k8s
-Actions -> Provisionar Ambiente Homolog ou Provisionar Ambiente Prod
-environment=homolog ou prod
-confirm=PROVISIONAR
-run_smoke_tests=false
+feature/* -> PR -> homolog -> deploy automatico homolog
+homolog -> PR -> main -> deploy automatico prod
 ```
+
+Para reprocessamento operacional, os mesmos workflows aceitam `workflow_dispatch` com confirmacao textual.
 
 Fluxo executado:
 
