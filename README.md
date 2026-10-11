@@ -67,11 +67,12 @@ O workflow executa:
 8. executa novo apply do banco para liberar acesso da Lambda;
 9. publica o codigo da Lambda;
 10. integra `POST /auth/cpf` no API Gateway;
-11. publica a aplicacao no EKS;
-12. captura o LoadBalancer da aplicacao;
-13. integra `ANY /{proxy+}` no API Gateway;
-14. valida outputs finais;
-15. executa smoke tests quando solicitado.
+11. publica `OFICINA_PUBLIC_BASE_URL` no environment do repo da API com o endpoint do API Gateway;
+12. publica a aplicacao no EKS;
+13. captura o LoadBalancer da aplicacao;
+14. integra `ANY /{proxy+}` no API Gateway;
+15. valida outputs finais;
+16. executa smoke tests quando solicitado.
 
 ### Destruir Ambiente Homolog
 

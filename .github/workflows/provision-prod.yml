@@ -356,6 +356,25 @@ jobs:
           EKS_CLUSTER_NAME="$(terraform output -raw eks_cluster_name)"
           ../scripts/aws/ensure-eks-access.sh "$EKS_CLUSTER_NAME" "$PRINCIPAL_ARN"
 
+      - name: Publish Gateway URL to API repository
+        working-directory: terraform
+        env:
+          GH_TOKEN: ${{ secrets.GH_AUTOMATION_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          GATEWAY_BASE_URL="$(terraform output -raw api_gateway_endpoint)"
+
+          if [ -z "$GATEWAY_BASE_URL" ]; then
+            echo "::error::API Gateway endpoint nao foi resolvido."
+            exit 1
+          fi
+
+          gh variable set OFICINA_PUBLIC_BASE_URL \
+            --repo "$API_REPO" \
+            --env "$TARGET_ENVIRONMENT" \
+            --body "$GATEWAY_BASE_URL"
+
       - name: Deploy application on EKS
         env:
           GH_TOKEN: ${{ secrets.GH_AUTOMATION_TOKEN }}
