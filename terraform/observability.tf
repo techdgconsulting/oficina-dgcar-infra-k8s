@@ -152,61 +152,9 @@ resource "newrelic_one_dashboard" "business" {
   page {
     name = "Ordens de Servico"
 
-    widget_billboard {
-      title  = "OS criadas hoje"
-      row    = 1
-      column = 1
-      width  = 3
-      height = 3
-
-      nrql_query {
-        account_id = var.new_relic_account_id
-        query      = "FROM OficinaOsEvent SELECT count(*) AS 'OS criadas' WHERE evento = 'OS_CRIADA' SINCE today"
-      }
-    }
-
-    widget_billboard {
-      title  = "Mudancas de status hoje"
-      row    = 1
-      column = 4
-      width  = 3
-      height = 3
-
-      nrql_query {
-        account_id = var.new_relic_account_id
-        query      = "FROM OficinaOsEvent SELECT count(*) AS 'Mudancas' WHERE evento = 'STATUS_ALTERADO' SINCE today"
-      }
-    }
-
-    widget_billboard {
-      title  = "Falhas de integracao hoje"
-      row    = 1
-      column = 7
-      width  = 3
-      height = 3
-
-      nrql_query {
-        account_id = var.new_relic_account_id
-        query      = "FROM OficinaOsEvent SELECT count(*) AS 'Falhas' WHERE evento IN ('FALHA_NOTIFICACAO', 'FALHA_PAGAMENTO', 'FALHA_PROCESSAMENTO') SINCE today"
-      }
-    }
-
-    widget_billboard {
-      title  = "Tempo medio operacional"
-      row    = 1
-      column = 10
-      width  = 3
-      height = 3
-
-      nrql_query {
-        account_id = var.new_relic_account_id
-        query      = "FROM OficinaOsEvent SELECT average(tempo_ms) / 1000 / 60 AS 'Minutos' WHERE evento = 'TEMPO_STATUS' AND status IN ('EM_DIAGNOSTICO', 'EM_EXECUCAO', 'FINALIZADA') SINCE 1 day ago"
-      }
-    }
-
     widget_bar {
       title  = "Volume diario de ordens de servico"
-      row    = 4
+      row    = 1
       column = 1
       width  = 6
       height = 3
@@ -218,7 +166,33 @@ resource "newrelic_one_dashboard" "business" {
     }
 
     widget_bar {
-      title  = "Quantidade por status"
+      title  = "Quantidade atual de OS por status"
+      row    = 1
+      column = 7
+      width  = 6
+      height = 3
+
+      nrql_query {
+        account_id = var.new_relic_account_id
+        query      = "FROM OficinaOsStatusSnapshot SELECT latest(quantidade) AS 'OS' FACET status SINCE 30 minutes ago"
+      }
+    }
+
+    widget_bar {
+      title  = "Atuacoes por mecanico"
+      row    = 4
+      column = 1
+      width  = 6
+      height = 3
+
+      nrql_query {
+        account_id = var.new_relic_account_id
+        query      = "FROM OficinaOsEvent SELECT count(*) AS 'Movimentacoes' WHERE evento = 'STATUS_ALTERADO' AND mecanico_nome != 'NAO_INFORMADO' FACET mecanico_nome SINCE 1 day ago"
+      }
+    }
+
+    widget_table {
+      title  = "Tempo medio por mecanico"
       row    = 4
       column = 7
       width  = 6
@@ -226,7 +200,7 @@ resource "newrelic_one_dashboard" "business" {
 
       nrql_query {
         account_id = var.new_relic_account_id
-        query      = "FROM OficinaOsEvent SELECT count(*) AS 'Entradas no status' WHERE evento = 'STATUS_ALTERADO' FACET status_atual SINCE 1 day ago"
+        query      = "FROM OficinaOsEvent SELECT average(tempo_ms) / 1000 / 60 AS 'Minutos' WHERE evento = 'TEMPO_STATUS' AND mecanico_nome != 'NAO_INFORMADO' FACET mecanico_nome SINCE 1 day ago"
       }
     }
 
@@ -260,25 +234,12 @@ resource "newrelic_one_dashboard" "business" {
       title  = "Falhas por tipo e erro"
       row    = 10
       column = 1
-      width  = 6
+      width  = 12
       height = 3
 
       nrql_query {
         account_id = var.new_relic_account_id
         query      = "FROM OficinaOsEvent SELECT count(*) AS 'Ocorrencias' WHERE evento IN ('FALHA_PROCESSAMENTO', 'FALHA_NOTIFICACAO', 'FALHA_PAGAMENTO') FACET evento, erro SINCE 1 day ago"
-      }
-    }
-
-    widget_table {
-      title  = "Ultimas mudancas de status"
-      row    = 10
-      column = 7
-      width  = 6
-      height = 3
-
-      nrql_query {
-        account_id = var.new_relic_account_id
-        query      = "FROM OficinaOsEvent SELECT latest(status_anterior) AS 'Anterior', latest(status_atual) AS 'Atual', latest(fluxo) AS 'Fluxo' WHERE evento = 'STATUS_ALTERADO' FACET status_atual SINCE 1 day ago LIMIT 20"
       }
     }
   }
