@@ -161,7 +161,7 @@ resource "newrelic_one_dashboard" "business" {
 
       nrql_query {
         account_id = var.new_relic_account_id
-        query      = "FROM Metric SELECT sum(oficina_os_criada_total) FACET status TIMESERIES 1 day"
+        query      = "FROM Metric SELECT sum(oficina_os_criada_total) FACET status TIMESERIES"
       }
     }
 
