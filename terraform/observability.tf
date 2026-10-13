@@ -152,9 +152,100 @@ resource "newrelic_one_dashboard" "business" {
   page {
     name = "Ordens de Servico"
 
+    widget_billboard {
+      title  = "Total de OS em aberto"
+      row    = 1
+      column = 1
+      width  = 3
+      height = 3
+
+      nrql_query {
+        account_id = var.new_relic_account_id
+        query      = "FROM OficinaOsOperationalSnapshot SELECT uniqueCount(numero_os) AS 'OS' WHERE status NOT IN ('ENTREGUE', 'CANCELADA') SINCE 30 minutes ago"
+      }
+    }
+
+    widget_billboard {
+      title  = "Em execucao"
+      row    = 1
+      column = 4
+      width  = 3
+      height = 3
+
+      nrql_query {
+        account_id = var.new_relic_account_id
+        query      = "FROM OficinaOsOperationalSnapshot SELECT uniqueCount(numero_os) AS 'OS' WHERE status = 'EM_EXECUCAO' SINCE 30 minutes ago"
+      }
+    }
+
+    widget_billboard {
+      title  = "Aguardando aprovacao"
+      row    = 1
+      column = 7
+      width  = 3
+      height = 3
+
+      nrql_query {
+        account_id = var.new_relic_account_id
+        query      = "FROM OficinaOsOperationalSnapshot SELECT uniqueCount(numero_os) AS 'OS' WHERE status = 'AGUARDANDO_APROVACAO' SINCE 30 minutes ago"
+      }
+    }
+
+    widget_billboard {
+      title  = "Concluidas hoje"
+      row    = 1
+      column = 10
+      width  = 3
+      height = 3
+
+      nrql_query {
+        account_id = var.new_relic_account_id
+        query      = "FROM OficinaOsEvent SELECT uniqueCount(numero_os) AS 'OS' WHERE evento = 'STATUS_ALTERADO' AND status_atual IN ('FINALIZADA', 'ENTREGUE') SINCE today"
+      }
+    }
+
+    widget_bar {
+      title  = "Status das OS"
+      row    = 4
+      column = 1
+      width  = 4
+      height = 4
+
+      nrql_query {
+        account_id = var.new_relic_account_id
+        query      = "FROM OficinaOsOperationalSnapshot SELECT uniqueCount(numero_os) AS 'OS' FACET status SINCE 30 minutes ago"
+      }
+    }
+
+    widget_table {
+      title  = "Desempenho dos mecanicos"
+      row    = 4
+      column = 5
+      width  = 8
+      height = 4
+
+      nrql_query {
+        account_id = var.new_relic_account_id
+        query      = "FROM OficinaOsOperationalSnapshot SELECT uniqueCount(numero_os) AS 'OS na oficina', average(idade_minutos) AS 'Tempo medio min' WHERE mecanico_nome NOT IN ('NAO_ATRIBUIDO', 'NAO_INFORMADO') FACET mecanico_nome SINCE 30 minutes ago"
+      }
+    }
+
+    widget_table {
+      title  = "Ordens de servico em andamento"
+      row    = 8
+      column = 1
+      width  = 12
+      height = 4
+
+      nrql_query {
+        account_id = var.new_relic_account_id
+        query      = "FROM OficinaOsOperationalSnapshot SELECT latest(cliente_nome) AS 'Cliente', latest(veiculo) AS 'Veiculo', latest(placa) AS 'Placa', latest(mecanico_nome) AS 'Mecanico', latest(status) AS 'Status', latest(idade_minutos) AS 'Tempo min', latest(valor_total) AS 'Valor' WHERE status NOT IN ('ENTREGUE', 'CANCELADA') FACET numero_os SINCE 30 minutes ago LIMIT 25"
+      }
+    }
+
     widget_bar {
       title  = "Volume diario de ordens de servico"
-      row    = 1
+      row    = 12
       column = 1
       width  = 6
       height = 3
@@ -166,47 +257,21 @@ resource "newrelic_one_dashboard" "business" {
     }
 
     widget_bar {
-      title  = "Quantidade atual de OS por status"
-      row    = 1
+      title  = "Produtividade por mecanico"
+      row    = 12
       column = 7
       width  = 6
       height = 3
 
       nrql_query {
         account_id = var.new_relic_account_id
-        query      = "FROM OficinaOsStatusSnapshot SELECT latest(quantidade) AS 'OS' FACET status SINCE 30 minutes ago"
-      }
-    }
-
-    widget_bar {
-      title  = "Atuacoes por mecanico"
-      row    = 4
-      column = 1
-      width  = 6
-      height = 3
-
-      nrql_query {
-        account_id = var.new_relic_account_id
-        query      = "FROM OficinaOsEvent SELECT count(*) AS 'Movimentacoes' WHERE evento = 'STATUS_ALTERADO' AND mecanico_nome != 'NAO_INFORMADO' FACET mecanico_nome SINCE 1 day ago"
-      }
-    }
-
-    widget_table {
-      title  = "Tempo medio por mecanico"
-      row    = 4
-      column = 7
-      width  = 6
-      height = 3
-
-      nrql_query {
-        account_id = var.new_relic_account_id
-        query      = "FROM OficinaOsEvent SELECT average(tempo_ms) / 1000 / 60 AS 'Minutos' WHERE evento = 'TEMPO_STATUS' AND mecanico_nome != 'NAO_INFORMADO' FACET mecanico_nome SINCE 1 day ago"
+        query      = "FROM OficinaOsEvent SELECT uniqueCount(numero_os) AS 'OS movimentadas' WHERE evento = 'STATUS_ALTERADO' AND mecanico_nome != 'NAO_INFORMADO' FACET mecanico_nome SINCE 1 day ago"
       }
     }
 
     widget_table {
       title  = "Tempo medio de execucao por status"
-      row    = 7
+      row    = 15
       column = 1
       width  = 6
       height = 3
@@ -217,24 +282,11 @@ resource "newrelic_one_dashboard" "business" {
       }
     }
 
-    widget_bar {
+    widget_table {
       title  = "Erros e falhas nas integracoes"
-      row    = 7
+      row    = 15
       column = 7
       width  = 6
-      height = 3
-
-      nrql_query {
-        account_id = var.new_relic_account_id
-        query      = "FROM OficinaOsEvent SELECT count(*) AS 'Falhas' WHERE evento IN ('FALHA_PROCESSAMENTO', 'FALHA_NOTIFICACAO', 'FALHA_PAGAMENTO') FACET evento SINCE 1 day ago"
-      }
-    }
-
-    widget_table {
-      title  = "Falhas por tipo e erro"
-      row    = 10
-      column = 1
-      width  = 12
       height = 3
 
       nrql_query {
