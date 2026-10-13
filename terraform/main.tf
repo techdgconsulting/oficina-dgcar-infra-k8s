@@ -17,6 +17,16 @@ locals {
   github_actions_iam_user_arn = var.github_actions_iam_user_arn == null ? "" : trimspace(var.github_actions_iam_user_arn)
 
   new_relic_kubernetes_enabled = var.enable_new_relic_kubernetes
+  new_relic_observability_enabled = (
+    var.enable_new_relic_observability &&
+    var.new_relic_account_id != null &&
+    var.new_relic_api_key != null &&
+    trimspace(var.new_relic_api_key) != ""
+  )
+
+  new_relic_app_name      = "${local.name}-api"
+  new_relic_cluster_name  = "${local.name}-eks"
+  new_relic_namespace_app = "oficina"
 }
 
 resource "aws_vpc" "main" {

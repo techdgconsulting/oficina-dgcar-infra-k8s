@@ -53,6 +53,31 @@ output "new_relic_kubernetes_release" {
   value       = local.new_relic_kubernetes_enabled ? var.new_relic_release_name : null
 }
 
+output "new_relic_observability_enabled" {
+  description = "Whether New Relic dashboards and alerts are enabled in this Terraform apply."
+  value       = nonsensitive(local.new_relic_observability_enabled)
+}
+
+output "new_relic_dashboard_api_guid" {
+  description = "GUID of the New Relic API dashboard."
+  value       = nonsensitive(local.new_relic_observability_enabled ? newrelic_one_dashboard.api[0].guid : null)
+}
+
+output "new_relic_dashboard_kubernetes_guid" {
+  description = "GUID of the New Relic Kubernetes dashboard."
+  value       = nonsensitive(local.new_relic_observability_enabled ? newrelic_one_dashboard.kubernetes[0].guid : null)
+}
+
+output "new_relic_dashboard_business_guid" {
+  description = "GUID of the New Relic business dashboard."
+  value       = nonsensitive(local.new_relic_observability_enabled ? newrelic_one_dashboard.business[0].guid : null)
+}
+
+output "new_relic_alert_policy_id" {
+  description = "ID of the New Relic alert policy for Oficina DGCar."
+  value       = nonsensitive(local.new_relic_observability_enabled ? newrelic_alert_policy.oficina[0].id : null)
+}
+
 output "eks_cluster_endpoint" {
   description = "EKS API endpoint."
   value       = aws_eks_cluster.main.endpoint
