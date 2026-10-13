@@ -66,6 +66,8 @@ jobs:
           GH_ACTIONS_IAM_USER_ARN: ${{ secrets.GH_ACTIONS_IAM_USER_ARN }}
           GH_ACTIONS_IAM_USER_NAME: ${{ secrets.GH_ACTIONS_IAM_USER_NAME }}
           NEW_RELIC_LICENSE_KEY: ${{ secrets.NEW_RELIC_LICENSE_KEY }}
+          NEW_RELIC_API_KEY: ${{ secrets.NEW_RELIC_API_KEY }}
+          NEW_RELIC_ACCOUNT_ID: ${{ secrets.NEW_RELIC_ACCOUNT_ID || vars.NEW_RELIC_ACCOUNT_ID }}
         run: |
           scripts/preflight/check-required-secrets.sh \
             AWS_ACCESS_KEY_ID \
@@ -76,7 +78,9 @@ jobs:
             TF_STATE_KEY \
             GH_ACTIONS_IAM_USER_ARN \
             GH_ACTIONS_IAM_USER_NAME \
-            NEW_RELIC_LICENSE_KEY
+            NEW_RELIC_LICENSE_KEY \
+            NEW_RELIC_API_KEY \
+            NEW_RELIC_ACCOUNT_ID
 
       - name: Validate AWS identity
         run: scripts/preflight/check-aws-identity.sh
@@ -126,6 +130,8 @@ jobs:
           TF_VAR_github_actions_iam_user_arn: ${{ secrets.GH_ACTIONS_IAM_USER_ARN }}
           TF_VAR_github_actions_iam_user_name: ${{ secrets.GH_ACTIONS_IAM_USER_NAME }}
           TF_VAR_new_relic_license_key: ${{ secrets.NEW_RELIC_LICENSE_KEY }}
+          TF_VAR_new_relic_api_key: ${{ secrets.NEW_RELIC_API_KEY }}
+          TF_VAR_new_relic_account_id: ${{ secrets.NEW_RELIC_ACCOUNT_ID || vars.NEW_RELIC_ACCOUNT_ID }}
         run: terraform apply -auto-approve
 
       - name: Publish network outputs
@@ -332,6 +338,8 @@ jobs:
           TF_VAR_github_actions_iam_user_arn: ${{ secrets.GH_ACTIONS_IAM_USER_ARN }}
           TF_VAR_github_actions_iam_user_name: ${{ secrets.GH_ACTIONS_IAM_USER_NAME }}
           TF_VAR_new_relic_license_key: ${{ secrets.NEW_RELIC_LICENSE_KEY }}
+          TF_VAR_new_relic_api_key: ${{ secrets.NEW_RELIC_API_KEY }}
+          TF_VAR_new_relic_account_id: ${{ secrets.NEW_RELIC_ACCOUNT_ID || vars.NEW_RELIC_ACCOUNT_ID }}
         run: |
           set -euo pipefail
 
@@ -402,6 +410,8 @@ jobs:
           TF_VAR_github_actions_iam_user_arn: ${{ secrets.GH_ACTIONS_IAM_USER_ARN }}
           TF_VAR_github_actions_iam_user_name: ${{ secrets.GH_ACTIONS_IAM_USER_NAME }}
           TF_VAR_new_relic_license_key: ${{ secrets.NEW_RELIC_LICENSE_KEY }}
+          TF_VAR_new_relic_api_key: ${{ secrets.NEW_RELIC_API_KEY }}
+          TF_VAR_new_relic_account_id: ${{ secrets.NEW_RELIC_ACCOUNT_ID || vars.NEW_RELIC_ACCOUNT_ID }}
         run: |
           set -euo pipefail
 
@@ -442,6 +452,11 @@ jobs:
           terraform output -raw new_relic_kubernetes_enabled
           terraform output -raw new_relic_kubernetes_namespace
           terraform output -raw new_relic_kubernetes_release
+          terraform output -raw new_relic_observability_enabled
+          terraform output -raw new_relic_dashboard_api_guid
+          terraform output -raw new_relic_dashboard_kubernetes_guid
+          terraform output -raw new_relic_dashboard_business_guid
+          terraform output -raw new_relic_alert_policy_id
 
       - name: Run smoke tests
         if: inputs.run_smoke_tests

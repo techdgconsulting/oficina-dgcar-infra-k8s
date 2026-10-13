@@ -145,11 +145,13 @@ Secrets esperados nos environments `homolog` e `prod`:
 - `TF_STATE_KEY`;
 - `GH_ACTIONS_IAM_USER_ARN`;
 - `GH_ACTIONS_IAM_USER_NAME`;
-- `NEW_RELIC_LICENSE_KEY`.
+- `NEW_RELIC_LICENSE_KEY`;
+- `NEW_RELIC_API_KEY`.
 
 Variables esperadas:
 
-- `AWS_REGION`.
+- `AWS_REGION`;
+- `NEW_RELIC_ACCOUNT_ID`.
 
 Smoke tests usam:
 
@@ -173,7 +175,12 @@ Outputs Terraform usados como evidencia da observabilidade:
 
 - `new_relic_kubernetes_enabled`;
 - `new_relic_kubernetes_namespace`;
-- `new_relic_kubernetes_release`.
+- `new_relic_kubernetes_release`;
+- `new_relic_observability_enabled`;
+- `new_relic_dashboard_api_guid`;
+- `new_relic_dashboard_kubernetes_guid`;
+- `new_relic_dashboard_business_guid`;
+- `new_relic_alert_policy_id`.
 
 ## Observabilidade Kubernetes
 
@@ -189,11 +196,33 @@ A integracao cobre:
 
 Logs de containers ficam desabilitados nesta fase para controlar ingestao. A API ja envia telemetria APM pelo Java Agent no repositorio `oficina-dgcar-api`.
 
+## Dashboards E Alertas
+
+O Terraform cria dashboards e alertas no New Relic usando a `NEW_RELIC_API_KEY`.
+
+Dashboards criados por ambiente:
+
+- `${project_name}-${environment} - API`: latencia, throughput, erros HTTP e endpoints lentos;
+- `${project_name}-${environment} - Kubernetes`: CPU, memoria, pods, restarts e HPA;
+- `${project_name}-${environment} - Negocio OS`: volume diario de OS, tempo medio por status e falhas de OS, email e pagamento.
+
+Alertas criados por ambiente:
+
+- API 5xx;
+- API p95 alto;
+- health down por containers nao prontos;
+- pod reiniciando;
+- falha no processamento de OS;
+- falha de notificacao;
+- falha de pagamento.
+
 Validacao visual:
 
 ```text
 New Relic -> Kubernetes
 New Relic -> All Entities -> oficina-dgcar-homolog-eks ou oficina-dgcar-prod-eks
+New Relic -> Dashboards -> oficina-dgcar-homolog - API/Kubernetes/Negocio OS
+New Relic -> Alerts -> Alert policies -> oficina-dgcar-homolog - Observabilidade
 ```
 
 ## Swagger E Postman

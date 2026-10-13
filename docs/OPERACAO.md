@@ -49,6 +49,17 @@ O provisionamento cria o namespace `newrelic` e instala os componentes para moni
 - workloads e HPA via kube-state-metrics;
 - health operacional por readiness/liveness e disponibilidade dos pods.
 
-O secret `NEW_RELIC_LICENSE_KEY` deve existir no GitHub Environment usado pela esteira (`homolog` ou `prod`).
+Os valores abaixo devem existir no GitHub Environment usado pela esteira (`homolog` ou `prod`):
+
+- secret `NEW_RELIC_LICENSE_KEY`: ingestao da integracao Kubernetes;
+- secret `NEW_RELIC_API_KEY`: criacao de dashboards e alertas via Terraform;
+- variable `NEW_RELIC_ACCOUNT_ID`: conta New Relic onde os recursos serao criados.
 
 Logs de containers permanecem desabilitados nesta fase para controlar ingestao. A correlacao e os logs JSON da API ficam implementados no repositorio `oficina-dgcar-api`.
+
+O Terraform tambem cria:
+
+- dashboard API com latencia, throughput, erros HTTP e endpoints lentos;
+- dashboard Kubernetes com CPU, memoria, pods, restarts e HPA;
+- dashboard de negocio com volume diario de OS, tempo medio por status e falhas de OS, email e pagamento;
+- alert policy com alertas de API 5xx, p95 alto, health down, pod reiniciando, falha de OS, falha de notificacao e falha de pagamento.

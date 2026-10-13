@@ -125,6 +125,37 @@ variable "new_relic_chart_version" {
   default     = null
 }
 
+variable "enable_new_relic_observability" {
+  description = "Whether to create New Relic dashboards and NRQL alert conditions for API, Kubernetes and business observability."
+  type        = bool
+  default     = true
+}
+
+variable "new_relic_account_id" {
+  description = "New Relic account ID used to create dashboards and alert conditions."
+  type        = number
+  default     = null
+}
+
+variable "new_relic_api_key" {
+  description = "New Relic User API Key used by Terraform to manage dashboards and alerts."
+  type        = string
+  default     = null
+  sensitive   = true
+}
+
+variable "new_relic_region" {
+  description = "New Relic API region. Use US for one.newrelic.com, EU for one.eu.newrelic.com or JP for one.jp.newrelic.com."
+  type        = string
+  default     = "US"
+}
+
+variable "new_relic_alert_p95_threshold_seconds" {
+  description = "Critical threshold, in seconds, for the API p95 latency alert."
+  type        = number
+  default     = 2
+}
+
 variable "ecr_repository_name" {
   description = "ECR repository name for the application image. It must be unique per AWS account and region."
   type        = string

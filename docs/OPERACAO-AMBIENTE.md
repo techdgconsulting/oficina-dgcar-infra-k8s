@@ -26,6 +26,14 @@ Configurar os secrets abaixo no GitHub Environment correspondente (`homolog` ou 
 | `GH_ACTIONS_IAM_USER_ARN` | Usuario IAM usado pela esteira para operar ECR e EKS |
 | `GH_ACTIONS_IAM_USER_NAME` | Nome do usuario IAM usado pela esteira |
 | `NEW_RELIC_LICENSE_KEY` | License key de ingestao usada pela integracao New Relic Kubernetes |
+| `NEW_RELIC_API_KEY` | User API Key usada pelo Terraform para criar dashboards e alertas no New Relic |
+
+Variables esperadas no mesmo GitHub Environment:
+
+| Variable | Uso |
+|---|---|
+| `AWS_REGION` | Regiao AWS da execucao, com `us-east-1` como valor operacional |
+| `NEW_RELIC_ACCOUNT_ID` | Conta New Relic onde dashboards e alertas serao criados |
 
 O token `GH_AUTOMATION_TOKEN` precisa de permissao para disparar workflows, consultar execucoes e gravar secrets de environment quando outputs tecnicos precisam ser compartilhados entre repositorios.
 
@@ -64,16 +72,17 @@ Fluxo executado:
 4. Remove node group anterior preso em `CREATE_FAILED`, quando existir.
 5. Provisiona VPC, subnets, EKS, ECR e API Gateway base.
 6. Instala New Relic Kubernetes no EKS via Helm.
-7. Publica outputs de rede, EKS e ECR nos repositorios dependentes.
-8. Aciona o provisionamento do PostgreSQL gerenciado.
-9. Aciona o provisionamento da Lambda Auth CPF + Senha.
-10. Atualiza o acesso do PostgreSQL ao security group real da Lambda.
-11. Publica o pacote da Lambda.
-12. Atualiza o API Gateway com a rota `POST /auth/cpf`.
-13. Publica a aplicacao Spring Boot no EKS.
-14. Resolve o endpoint HTTP da aplicacao e atualiza o API Gateway com a rota proxy `ANY /{proxy+}`.
-15. Resolve os outputs finais do ambiente.
-16. Executa smoke tests quando `run_smoke_tests=true`.
+7. Cria dashboards e alertas New Relic para API, Kubernetes e negocio.
+8. Publica outputs de rede, EKS e ECR nos repositorios dependentes.
+9. Aciona o provisionamento do PostgreSQL gerenciado.
+10. Aciona o provisionamento da Lambda Auth CPF + Senha.
+11. Atualiza o acesso do PostgreSQL ao security group real da Lambda.
+12. Publica o pacote da Lambda.
+13. Atualiza o API Gateway com a rota `POST /auth/cpf`.
+14. Publica a aplicacao Spring Boot no EKS.
+15. Resolve o endpoint HTTP da aplicacao e atualiza o API Gateway com a rota proxy `ANY /{proxy+}`.
+16. Resolve os outputs finais do ambiente.
+17. Executa smoke tests quando `run_smoke_tests=true`.
 
 ## Observabilidade Kubernetes
 
@@ -88,6 +97,8 @@ Kubernetes -> cluster oficina-dgcar-homolog-eks ou oficina-dgcar-prod-eks
 Indicadores cobertos:
 
 - CPU e memoria de nodes, pods e containers;
+- dashboards de API, Kubernetes e negocio;
+- alertas de API 5xx, p95 alto, health down, pod reiniciando, falha de OS, falha de notificacao e falha de pagamento;
 - pods e restarts;
 - eventos Kubernetes;
 - HPA e workloads via kube-state-metrics;
@@ -122,7 +133,7 @@ Fluxo executado:
 4. Aciona o destroy da Lambda Auth CPF + Senha.
 5. Aguarda liberacao de ENIs gerenciadas pela AWS.
 6. Remove dependencias residuais seguras da VPC alvo.
-7. Executa o destroy final da infraestrutura Kubernetes, API Gateway, ECR, EKS e rede.
+7. Executa o destroy final dos dashboards/alertas New Relic, infraestrutura Kubernetes, API Gateway, ECR, EKS e rede.
 8. Executa diagnostico adicional e nova tentativa quando a VPC ainda possui dependencias removiveis.
 9. Valida que os recursos principais nao permanecem na AWS.
 
