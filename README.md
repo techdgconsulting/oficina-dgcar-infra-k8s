@@ -12,6 +12,7 @@ Responsabilidades principais:
 - provisionar security groups compartilhados;
 - provisionar Amazon EKS e node group;
 - provisionar Amazon ECR;
+- instalar New Relic Kubernetes no EKS;
 - provisionar API Gateway HTTP como entrada oficial da solucao;
 - integrar `POST /auth/cpf` com a Lambda Auth CPF + Senha;
 - integrar `ANY /{proxy+}` com a API Spring Boot executando no EKS;
@@ -28,6 +29,8 @@ Responsabilidades principais:
 - AWS API Gateway HTTP API;
 - Kubernetes;
 - Kustomize;
+- Helm;
+- New Relic;
 - GitHub Actions;
 - Bash;
 - kubectl.
@@ -46,6 +49,7 @@ flowchart LR
   lambda --> rds
   gha[GitHub Actions] --> terraform[Terraform]
   terraform --> eks[EKS, ECR, VPC e Gateway]
+  terraform --> nr[New Relic Kubernetes]
 ```
 
 Este repositorio cria a infraestrutura de borda e execucao. O banco fica no `oficina-dgcar-infra-db`, a autenticacao externa fica no `oficina-dgcar-auth-lambda` e a aplicacao fica no `oficina-dgcar-api`.
@@ -106,16 +110,17 @@ O provisionamento completo executa:
 
 1. valida credenciais, GitHub token, state remoto e locks;
 2. cria rede, EKS, node group, ECR e API Gateway;
-3. publica outputs de rede para banco, Lambda e API;
-4. dispara provisionamento do RDS;
-5. dispara provisionamento da Lambda;
-6. reexecuta banco para liberar acesso da Lambda;
-7. publica codigo da Lambda;
-8. integra `POST /auth/cpf` no API Gateway;
-9. publica `OFICINA_PUBLIC_BASE_URL` no repo da API;
-10. publica a API no EKS;
-11. integra `ANY /{proxy+}` no API Gateway;
-12. valida outputs finais e smoke tests quando solicitado.
+3. instala New Relic Kubernetes no EKS;
+4. publica outputs de rede para banco, Lambda e API;
+5. dispara provisionamento do RDS;
+6. dispara provisionamento da Lambda;
+7. reexecuta banco para liberar acesso da Lambda;
+8. publica codigo da Lambda;
+9. integra `POST /auth/cpf` no API Gateway;
+10. publica `OFICINA_PUBLIC_BASE_URL` no repo da API;
+11. publica a API no EKS;
+12. integra `ANY /{proxy+}` no API Gateway;
+13. valida outputs finais e smoke tests quando solicitado.
 
 `workflow_dispatch` permanece disponivel para reprocessamento operacional controlado. Producao usa GitHub Environment `prod` e pode exigir aprovacao antes do deploy.
 
@@ -139,7 +144,8 @@ Secrets esperados nos environments `homolog` e `prod`:
 - `TF_STATE_BUCKET`;
 - `TF_STATE_KEY`;
 - `GH_ACTIONS_IAM_USER_ARN`;
-- `GH_ACTIONS_IAM_USER_NAME`.
+- `GH_ACTIONS_IAM_USER_NAME`;
+- `NEW_RELIC_LICENSE_KEY`.
 
 Variables esperadas:
 
@@ -162,6 +168,33 @@ Este repositorio publica outputs usados pelos demais repositorios:
 - `ECR_REPOSITORY`;
 - `EKS_CLUSTER_NAME`;
 - endpoint publico do API Gateway, publicado para a API como `OFICINA_PUBLIC_BASE_URL`.
+
+Outputs Terraform usados como evidencia da observabilidade:
+
+- `new_relic_kubernetes_enabled`;
+- `new_relic_kubernetes_namespace`;
+- `new_relic_kubernetes_release`.
+
+## Observabilidade Kubernetes
+
+O Terraform instala o chart oficial `nri-bundle` no namespace `newrelic`.
+
+A integracao cobre:
+
+- CPU e memoria de nodes, pods e containers;
+- pods e restarts;
+- eventos Kubernetes;
+- workloads e HPA via kube-state-metrics;
+- health operacional por readiness/liveness e disponibilidade dos pods.
+
+Logs de containers ficam desabilitados nesta fase para controlar ingestao. A API ja envia telemetria APM pelo Java Agent no repositorio `oficina-dgcar-api`.
+
+Validacao visual:
+
+```text
+New Relic -> Kubernetes
+New Relic -> All Entities -> oficina-dgcar-homolog-eks ou oficina-dgcar-prod-eks
+```
 
 ## Swagger E Postman
 
