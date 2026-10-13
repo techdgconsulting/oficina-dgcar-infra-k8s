@@ -65,6 +65,7 @@ jobs:
           TF_STATE_KEY: ${{ secrets.TF_STATE_KEY }}
           GH_ACTIONS_IAM_USER_ARN: ${{ secrets.GH_ACTIONS_IAM_USER_ARN }}
           GH_ACTIONS_IAM_USER_NAME: ${{ secrets.GH_ACTIONS_IAM_USER_NAME }}
+          NEW_RELIC_LICENSE_KEY: ${{ secrets.NEW_RELIC_LICENSE_KEY }}
         run: |
           scripts/preflight/check-required-secrets.sh \
             AWS_ACCESS_KEY_ID \
@@ -74,7 +75,8 @@ jobs:
             TF_STATE_BUCKET \
             TF_STATE_KEY \
             GH_ACTIONS_IAM_USER_ARN \
-            GH_ACTIONS_IAM_USER_NAME
+            GH_ACTIONS_IAM_USER_NAME \
+            NEW_RELIC_LICENSE_KEY
 
       - name: Validate AWS identity
         run: scripts/preflight/check-aws-identity.sh
@@ -123,6 +125,7 @@ jobs:
           TF_VAR_enable_github_actions_eks_access: "true"
           TF_VAR_github_actions_iam_user_arn: ${{ secrets.GH_ACTIONS_IAM_USER_ARN }}
           TF_VAR_github_actions_iam_user_name: ${{ secrets.GH_ACTIONS_IAM_USER_NAME }}
+          TF_VAR_new_relic_license_key: ${{ secrets.NEW_RELIC_LICENSE_KEY }}
         run: terraform apply -auto-approve
 
       - name: Publish network outputs
@@ -328,6 +331,7 @@ jobs:
           TF_VAR_enable_github_actions_eks_access: "true"
           TF_VAR_github_actions_iam_user_arn: ${{ secrets.GH_ACTIONS_IAM_USER_ARN }}
           TF_VAR_github_actions_iam_user_name: ${{ secrets.GH_ACTIONS_IAM_USER_NAME }}
+          TF_VAR_new_relic_license_key: ${{ secrets.NEW_RELIC_LICENSE_KEY }}
         run: |
           set -euo pipefail
 
@@ -397,6 +401,7 @@ jobs:
           TF_VAR_enable_github_actions_eks_access: "true"
           TF_VAR_github_actions_iam_user_arn: ${{ secrets.GH_ACTIONS_IAM_USER_ARN }}
           TF_VAR_github_actions_iam_user_name: ${{ secrets.GH_ACTIONS_IAM_USER_NAME }}
+          TF_VAR_new_relic_license_key: ${{ secrets.NEW_RELIC_LICENSE_KEY }}
         run: |
           set -euo pipefail
 
@@ -434,6 +439,9 @@ jobs:
           terraform output -raw ecr_repository_url
           terraform output -raw api_gateway_id
           terraform output -raw api_gateway_endpoint
+          terraform output -raw new_relic_kubernetes_enabled
+          terraform output -raw new_relic_kubernetes_namespace
+          terraform output -raw new_relic_kubernetes_release
 
       - name: Run smoke tests
         if: inputs.run_smoke_tests

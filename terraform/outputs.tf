@@ -38,6 +38,21 @@ output "eks_cluster_name" {
   value       = aws_eks_cluster.main.name
 }
 
+output "new_relic_kubernetes_enabled" {
+  description = "Whether the New Relic Kubernetes integration is enabled in this Terraform apply."
+  value       = local.new_relic_kubernetes_enabled
+}
+
+output "new_relic_kubernetes_namespace" {
+  description = "Namespace used by the New Relic Kubernetes integration."
+  value       = local.new_relic_kubernetes_enabled ? var.new_relic_namespace : null
+}
+
+output "new_relic_kubernetes_release" {
+  description = "Helm release used by the New Relic Kubernetes integration."
+  value       = local.new_relic_kubernetes_enabled ? var.new_relic_release_name : null
+}
+
 output "eks_cluster_endpoint" {
   description = "EKS API endpoint."
   value       = aws_eks_cluster.main.endpoint

@@ -15,6 +15,8 @@ locals {
   )
 
   github_actions_iam_user_arn = var.github_actions_iam_user_arn == null ? "" : trimspace(var.github_actions_iam_user_arn)
+
+  new_relic_kubernetes_enabled = var.enable_new_relic_kubernetes
 }
 
 resource "aws_vpc" "main" {
@@ -264,6 +266,58 @@ resource "aws_eks_node_group" "main" {
   tags = {
     Name = "${local.name}-nodes"
   }
+}
+
+resource "helm_release" "new_relic_kubernetes" {
+  count = local.new_relic_kubernetes_enabled ? 1 : 0
+
+  name             = var.new_relic_release_name
+  repository       = "https://helm-charts.newrelic.com"
+  chart            = "nri-bundle"
+  version          = var.new_relic_chart_version
+  namespace        = var.new_relic_namespace
+  create_namespace = true
+  wait             = true
+  timeout          = 600
+
+  values = [
+    yamlencode({
+      global = {
+        cluster     = aws_eks_cluster.main.name
+        licenseKey  = var.new_relic_license_key
+        lowDataMode = true
+      }
+
+      "newrelic-infrastructure" = {
+        enabled    = true
+        privileged = true
+      }
+
+      "nri-metadata-injection" = {
+        enabled = true
+      }
+
+      "kube-state-metrics" = {
+        enabled = true
+      }
+
+      "nri-kube-events" = {
+        enabled = true
+      }
+
+      "nri-prometheus" = {
+        enabled = false
+      }
+
+      "newrelic-logging" = {
+        enabled = false
+      }
+    })
+  ]
+
+  depends_on = [
+    aws_eks_node_group.main
+  ]
 }
 
 resource "aws_iam_user_policy_attachment" "github_actions_ecr_power_user" {

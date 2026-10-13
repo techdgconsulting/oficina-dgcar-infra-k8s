@@ -94,6 +94,37 @@ variable "node_disk_size" {
   default     = 20
 }
 
+variable "enable_new_relic_kubernetes" {
+  description = "Whether to install the New Relic Kubernetes integration through the official nri-bundle Helm chart."
+  type        = bool
+  default     = true
+}
+
+variable "new_relic_license_key" {
+  description = "New Relic ingest license key used by the Kubernetes integration."
+  type        = string
+  default     = null
+  sensitive   = true
+}
+
+variable "new_relic_namespace" {
+  description = "Kubernetes namespace used by the New Relic Kubernetes integration."
+  type        = string
+  default     = "newrelic"
+}
+
+variable "new_relic_release_name" {
+  description = "Helm release name for the New Relic Kubernetes integration."
+  type        = string
+  default     = "newrelic-bundle"
+}
+
+variable "new_relic_chart_version" {
+  description = "Optional nri-bundle chart version. Null lets Helm use the latest chart available in the configured repository."
+  type        = string
+  default     = null
+}
+
 variable "ecr_repository_name" {
   description = "ECR repository name for the application image. It must be unique per AWS account and region."
   type        = string

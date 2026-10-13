@@ -16,6 +16,7 @@ O fluxo de infraestrutura cria e integra obrigatoriamente:
 - security groups compartilhados;
 - Amazon EKS;
 - node group;
+- New Relic Kubernetes integration via Helm;
 - Amazon ECR;
 - API Gateway HTTP;
 - rota `POST /auth/cpf`;
@@ -61,18 +62,19 @@ O workflow executa:
 2. valida credenciais, token GitHub, state remoto e lock;
 3. valida recursos residuais conflitantes;
 4. cria rede, EKS, node group, ECR e API Gateway;
-5. publica outputs de rede para banco, Lambda e API;
-6. executa o provisionamento do banco;
-7. executa o provisionamento da Lambda;
-8. executa novo apply do banco para liberar acesso da Lambda;
-9. publica o codigo da Lambda;
-10. integra `POST /auth/cpf` no API Gateway;
-11. publica `OFICINA_PUBLIC_BASE_URL` no environment do repo da API com o endpoint do API Gateway;
-12. publica a aplicacao no EKS;
-13. captura o LoadBalancer da aplicacao;
-14. integra `ANY /{proxy+}` no API Gateway;
-15. valida outputs finais;
-16. executa smoke tests quando solicitado.
+5. instala a integracao New Relic Kubernetes no EKS;
+6. publica outputs de rede para banco, Lambda e API;
+7. executa o provisionamento do banco;
+8. executa o provisionamento da Lambda;
+9. executa novo apply do banco para liberar acesso da Lambda;
+10. publica o codigo da Lambda;
+11. integra `POST /auth/cpf` no API Gateway;
+12. publica `OFICINA_PUBLIC_BASE_URL` no environment do repo da API com o endpoint do API Gateway;
+13. publica a aplicacao no EKS;
+14. captura o LoadBalancer da aplicacao;
+15. integra `ANY /{proxy+}` no API Gateway;
+16. valida outputs finais;
+17. executa smoke tests quando solicitado.
 
 ### Destruir Ambiente Homolog
 
@@ -179,6 +181,7 @@ Secrets esperados no environment `homolog` deste repositorio:
 - `TF_STATE_KEY`;
 - `GH_ACTIONS_IAM_USER_ARN`;
 - `GH_ACTIONS_IAM_USER_NAME`.
+- `NEW_RELIC_LICENSE_KEY`.
 
 Variables esperadas:
 
@@ -188,10 +191,37 @@ Smoke tests usam:
 
 - `CLIENT_TEST_CPF`;
 - `CLIENT_TEST_PASSWORD`;
-- `CLIENT_TEST_OS_NUMBER`.
+- `CLIENT_TEST_OS_NUMBER`;
 - `CLIENT_OTHER_OS_NUMBER`.
 
 Os repositorios dependentes continuam com seus proprios secrets de banco, JWT, Mailtrap, deploy e runtime.
+
+## Observabilidade Kubernetes
+
+O Terraform instala o chart oficial `nri-bundle` da New Relic no namespace `newrelic`.
+
+A integracao cobre:
+
+- CPU e memoria de nodes, pods e containers;
+- pods, status e restarts;
+- eventos Kubernetes;
+- estado de workloads e HPA via kube-state-metrics;
+- health operacional por readiness/liveness e disponibilidade dos pods.
+
+Logs de containers ficam desabilitados nesta fase para controlar ingestao. A API ja envia telemetria APM pelo Java Agent no repositorio `oficina-dgcar-api`.
+
+Secret obrigatorio no environment do `oficina-dgcar-infra-k8s`:
+
+```text
+NEW_RELIC_LICENSE_KEY
+```
+
+Depois do provisionamento, a validacao visual ocorre em:
+
+```text
+New Relic -> Kubernetes
+New Relic -> All Entities -> oficina-dgcar-homolog-eks ou oficina-dgcar-prod-eks
+```
 
 ## Outputs Publicados
 
@@ -202,6 +232,9 @@ Este repositorio publica:
 - `ALLOWED_DB_SECURITY_GROUP_IDS`;
 - `ECR_REPOSITORY`;
 - `EKS_CLUSTER_NAME`.
+- `new_relic_kubernetes_enabled`;
+- `new_relic_kubernetes_namespace`;
+- `new_relic_kubernetes_release`.
 
 Os demais repositorios publicam seus proprios outputs durante os workflows chamados pela esteira.
 

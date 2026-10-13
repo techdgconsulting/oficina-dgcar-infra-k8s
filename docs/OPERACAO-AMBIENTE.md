@@ -25,6 +25,7 @@ Configurar os secrets abaixo no GitHub Environment correspondente (`homolog` ou 
 | `TF_STATE_KEY` | Chave do state remoto da infraestrutura Kubernetes |
 | `GH_ACTIONS_IAM_USER_ARN` | Usuario IAM usado pela esteira para operar ECR e EKS |
 | `GH_ACTIONS_IAM_USER_NAME` | Nome do usuario IAM usado pela esteira |
+| `NEW_RELIC_LICENSE_KEY` | License key de ingestao usada pela integracao New Relic Kubernetes |
 
 O token `GH_AUTOMATION_TOKEN` precisa de permissao para disparar workflows, consultar execucoes e gravar secrets de environment quando outputs tecnicos precisam ser compartilhados entre repositorios.
 
@@ -62,16 +63,35 @@ Fluxo executado:
 3. Valida recursos residuais conflitantes antes de criar a infraestrutura.
 4. Remove node group anterior preso em `CREATE_FAILED`, quando existir.
 5. Provisiona VPC, subnets, EKS, ECR e API Gateway base.
-6. Publica outputs de rede, EKS e ECR nos repositorios dependentes.
-7. Aciona o provisionamento do PostgreSQL gerenciado.
-8. Aciona o provisionamento da Lambda Auth CPF + Senha.
-9. Atualiza o acesso do PostgreSQL ao security group real da Lambda.
-10. Publica o pacote da Lambda.
-11. Atualiza o API Gateway com a rota `POST /auth/cpf`.
-12. Publica a aplicacao Spring Boot no EKS.
-13. Resolve o endpoint HTTP da aplicacao e atualiza o API Gateway com a rota proxy `ANY /{proxy+}`.
-14. Resolve os outputs finais do ambiente.
-15. Executa smoke tests quando `run_smoke_tests=true`.
+6. Instala New Relic Kubernetes no EKS via Helm.
+7. Publica outputs de rede, EKS e ECR nos repositorios dependentes.
+8. Aciona o provisionamento do PostgreSQL gerenciado.
+9. Aciona o provisionamento da Lambda Auth CPF + Senha.
+10. Atualiza o acesso do PostgreSQL ao security group real da Lambda.
+11. Publica o pacote da Lambda.
+12. Atualiza o API Gateway com a rota `POST /auth/cpf`.
+13. Publica a aplicacao Spring Boot no EKS.
+14. Resolve o endpoint HTTP da aplicacao e atualiza o API Gateway com a rota proxy `ANY /{proxy+}`.
+15. Resolve os outputs finais do ambiente.
+16. Executa smoke tests quando `run_smoke_tests=true`.
+
+## Observabilidade Kubernetes
+
+A integracao New Relic Kubernetes e instalada no namespace `newrelic` pelo Terraform deste repositorio.
+
+Validacao no New Relic:
+
+```text
+Kubernetes -> cluster oficina-dgcar-homolog-eks ou oficina-dgcar-prod-eks
+```
+
+Indicadores cobertos:
+
+- CPU e memoria de nodes, pods e containers;
+- pods e restarts;
+- eventos Kubernetes;
+- HPA e workloads via kube-state-metrics;
+- health operacional por readiness/liveness e disponibilidade dos pods.
 
 ## Validacao Funcional
 

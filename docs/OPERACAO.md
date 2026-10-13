@@ -7,6 +7,7 @@
 - ECR para imagens Docker.
 - API Gateway HTTP como entrada oficial.
 - Rotas opcionais para API principal e autenticacao por CPF.
+- New Relic Kubernetes integration para telemetria operacional do cluster.
 - Manifests Kubernetes versionados em `k8s/`.
 
 ## API Gateway
@@ -38,4 +39,16 @@ O arquivo `secret.example.yaml` e apenas modelo. Secrets reais devem ser aplicad
 
 ## Observabilidade
 
-A integracao New Relic deve ser adicionada neste repositorio quando a instrumentacao Kubernetes for ativada, pois este repositorio e responsavel pelo cluster e pelos manifests operacionais.
+A integracao New Relic Kubernetes e instalada pelo Terraform usando o chart oficial `nri-bundle`.
+
+O provisionamento cria o namespace `newrelic` e instala os componentes para monitorar:
+
+- CPU e memoria de nodes, pods e containers;
+- pods e restarts;
+- eventos Kubernetes;
+- workloads e HPA via kube-state-metrics;
+- health operacional por readiness/liveness e disponibilidade dos pods.
+
+O secret `NEW_RELIC_LICENSE_KEY` deve existir no GitHub Environment usado pela esteira (`homolog` ou `prod`).
+
+Logs de containers permanecem desabilitados nesta fase para controlar ingestao. A correlacao e os logs JSON da API ficam implementados no repositorio `oficina-dgcar-api`.
