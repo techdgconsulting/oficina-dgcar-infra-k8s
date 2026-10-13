@@ -161,7 +161,7 @@ resource "newrelic_one_dashboard" "business" {
 
       nrql_query {
         account_id = var.new_relic_account_id
-        query      = "FROM Metric SELECT sum(oficina_os_criada_total) FACET status TIMESERIES"
+        query      = "FROM OficinaOsEvent SELECT count(*) WHERE evento = 'OS_CRIADA' FACET status TIMESERIES"
       }
     }
 
@@ -174,7 +174,7 @@ resource "newrelic_one_dashboard" "business" {
 
       nrql_query {
         account_id = var.new_relic_account_id
-        query      = "FROM Metric SELECT sum(oficina_os_status_alterado_total) FACET status_atual TIMESERIES"
+        query      = "FROM OficinaOsEvent SELECT count(*) WHERE evento = 'STATUS_ALTERADO' FACET status_atual TIMESERIES"
       }
     }
 
@@ -187,7 +187,7 @@ resource "newrelic_one_dashboard" "business" {
 
       nrql_query {
         account_id = var.new_relic_account_id
-        query      = "FROM Metric SELECT average(oficina_os_tempo_status) WHERE status IN ('EM_DIAGNOSTICO', 'EM_EXECUCAO', 'FINALIZADA') FACET status"
+        query      = "FROM OficinaOsEvent SELECT average(tempo_ms) WHERE evento = 'TEMPO_STATUS' AND status IN ('EM_DIAGNOSTICO', 'EM_EXECUCAO', 'FINALIZADA') FACET status"
       }
     }
 
@@ -200,7 +200,7 @@ resource "newrelic_one_dashboard" "business" {
 
       nrql_query {
         account_id = var.new_relic_account_id
-        query      = "FROM Metric SELECT sum(oficina_os_processamento_falha_total)"
+        query      = "FROM OficinaOsEvent SELECT count(*) WHERE evento = 'FALHA_PROCESSAMENTO'"
       }
     }
 
@@ -213,7 +213,7 @@ resource "newrelic_one_dashboard" "business" {
 
       nrql_query {
         account_id = var.new_relic_account_id
-        query      = "FROM Metric SELECT sum(oficina_os_notificacao_falha_total)"
+        query      = "FROM OficinaOsEvent SELECT count(*) WHERE evento = 'FALHA_NOTIFICACAO'"
       }
     }
 
@@ -226,7 +226,7 @@ resource "newrelic_one_dashboard" "business" {
 
       nrql_query {
         account_id = var.new_relic_account_id
-        query      = "FROM Metric SELECT sum(oficina_os_pagamento_falha_total)"
+        query      = "FROM OficinaOsEvent SELECT count(*) WHERE evento = 'FALHA_PAGAMENTO'"
       }
     }
   }
@@ -343,7 +343,7 @@ resource "newrelic_nrql_alert_condition" "os_processing_failure" {
   violation_time_limit_seconds = 3600
 
   nrql {
-    query = "FROM Metric SELECT sum(oficina_os_processamento_falha_total)"
+    query = "FROM OficinaOsEvent SELECT count(*) WHERE evento = 'FALHA_PROCESSAMENTO'"
   }
 
   critical {
@@ -366,7 +366,7 @@ resource "newrelic_nrql_alert_condition" "notification_failure" {
   violation_time_limit_seconds = 3600
 
   nrql {
-    query = "FROM Metric SELECT sum(oficina_os_notificacao_falha_total)"
+    query = "FROM OficinaOsEvent SELECT count(*) WHERE evento = 'FALHA_NOTIFICACAO'"
   }
 
   critical {
@@ -389,7 +389,7 @@ resource "newrelic_nrql_alert_condition" "payment_failure" {
   violation_time_limit_seconds = 3600
 
   nrql {
-    query = "FROM Metric SELECT sum(oficina_os_pagamento_falha_total)"
+    query = "FROM OficinaOsEvent SELECT count(*) WHERE evento = 'FALHA_PAGAMENTO'"
   }
 
   critical {
