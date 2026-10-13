@@ -24,7 +24,7 @@ locals {
     trimspace(var.new_relic_api_key) != ""
   )
 
-  new_relic_app_name      = "${local.name}-api"
+  new_relic_app_name      = "${var.project_name}-api-${var.environment}"
   new_relic_cluster_name  = "${local.name}-eks"
   new_relic_namespace_app = "oficina"
 }
