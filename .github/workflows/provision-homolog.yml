@@ -158,19 +158,19 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GH_AUTOMATION_TOKEN }}
         run: |
-          scripts/github-actions/dispatch-workflow.sh "$INFRA_DB_REPO" "$INFRA_DB_WORKFLOW" main \
+          scripts/github-actions/dispatch-workflow.sh "$INFRA_DB_REPO" "$INFRA_DB_WORKFLOW" homolog \
             -f action=apply \
             -f environment="$TARGET_ENVIRONMENT"
-          scripts/github-actions/wait-workflow.sh "$INFRA_DB_REPO" "$INFRA_DB_WORKFLOW" main
+          scripts/github-actions/wait-workflow.sh "$INFRA_DB_REPO" "$INFRA_DB_WORKFLOW" homolog
 
       - name: Provision Lambda infrastructure
         env:
           GH_TOKEN: ${{ secrets.GH_AUTOMATION_TOKEN }}
         run: |
-          scripts/github-actions/dispatch-workflow.sh "$AUTH_LAMBDA_REPO" "$AUTH_LAMBDA_WORKFLOW" main \
+          scripts/github-actions/dispatch-workflow.sh "$AUTH_LAMBDA_REPO" "$AUTH_LAMBDA_WORKFLOW" homolog \
             -f action=apply-infra \
             -f environment="$TARGET_ENVIRONMENT"
-          scripts/github-actions/wait-workflow.sh "$AUTH_LAMBDA_REPO" "$AUTH_LAMBDA_WORKFLOW" main
+          scripts/github-actions/wait-workflow.sh "$AUTH_LAMBDA_REPO" "$AUTH_LAMBDA_WORKFLOW" homolog
 
       - name: Publish Lambda database access
         id: db_access_outputs
@@ -219,10 +219,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GH_AUTOMATION_TOKEN }}
         run: |
-          scripts/github-actions/dispatch-workflow.sh "$INFRA_DB_REPO" "$INFRA_DB_WORKFLOW" main \
+          scripts/github-actions/dispatch-workflow.sh "$INFRA_DB_REPO" "$INFRA_DB_WORKFLOW" homolog \
             -f action=apply \
             -f environment="$TARGET_ENVIRONMENT"
-          scripts/github-actions/wait-workflow.sh "$INFRA_DB_REPO" "$INFRA_DB_WORKFLOW" main
+          scripts/github-actions/wait-workflow.sh "$INFRA_DB_REPO" "$INFRA_DB_WORKFLOW" homolog
 
       - name: Ensure Lambda database access
         env:
@@ -315,10 +315,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GH_AUTOMATION_TOKEN }}
         run: |
-          scripts/github-actions/dispatch-workflow.sh "$AUTH_LAMBDA_REPO" "$AUTH_LAMBDA_WORKFLOW" main \
+          scripts/github-actions/dispatch-workflow.sh "$AUTH_LAMBDA_REPO" "$AUTH_LAMBDA_WORKFLOW" homolog \
             -f action=deploy-code \
             -f environment="$TARGET_ENVIRONMENT"
-          scripts/github-actions/wait-workflow.sh "$AUTH_LAMBDA_REPO" "$AUTH_LAMBDA_WORKFLOW" main
+          scripts/github-actions/wait-workflow.sh "$AUTH_LAMBDA_REPO" "$AUTH_LAMBDA_WORKFLOW" homolog
 
       - name: Integrate API Gateway with Lambda
         id: lambda_outputs
@@ -383,9 +383,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GH_AUTOMATION_TOKEN }}
         run: |
-          scripts/github-actions/dispatch-workflow.sh "$API_REPO" "$API_WORKFLOW" main \
+          scripts/github-actions/dispatch-workflow.sh "$API_REPO" "$API_WORKFLOW" homolog \
             -f environment="$TARGET_ENVIRONMENT"
-          scripts/github-actions/wait-workflow.sh "$API_REPO" "$API_WORKFLOW" main
+          scripts/github-actions/wait-workflow.sh "$API_REPO" "$API_WORKFLOW" homolog
 
       - name: Integrate API Gateway with application
         id: backend_outputs
