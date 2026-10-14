@@ -10,7 +10,7 @@ import re
 import sys
 import urllib.request
 from collections import Counter, defaultdict
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 
 def validate_scope(plan):
@@ -103,7 +103,7 @@ def validate_business_values(queries):
     print("OK massa historica: Diagnostico=60 min, Execucao=8520 min, Finalizacao=60 min por OS")
 
     orders = read_orders()
-    end = round(datetime.now(timezone.utc).timestamp()) * 1000
+    end = int(datetime.now(timezone.utc).timestamp()) * 1000
     for days in (1, 14):
         start = end - days * 86400000
         period = f"SINCE {start} UNTIL {end}"
