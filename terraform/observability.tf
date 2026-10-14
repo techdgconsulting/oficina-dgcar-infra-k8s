@@ -159,7 +159,7 @@ resource "newrelic_one_dashboard" "business" {
       row    = 1
       column = 1
       width  = 3
-      height = 3
+      height = 4
 
       nrql_query {
         account_id = var.new_relic_account_id
@@ -167,51 +167,12 @@ resource "newrelic_one_dashboard" "business" {
       }
     }
 
-    widget_billboard {
-      title  = "Em execucao"
-      row    = 1
-      column = 4
-      width  = 3
-      height = 3
-
-      nrql_query {
-        account_id = var.new_relic_account_id
-        query      = "FROM (${local.nrql_business_latest}) SELECT count(*) AS 'OS' WHERE status = 'EM_EXECUCAO' SINCE 30 minutes ago"
-      }
-    }
-
-    widget_billboard {
-      title  = "Aguardando aprovacao"
-      row    = 1
-      column = 7
-      width  = 3
-      height = 3
-
-      nrql_query {
-        account_id = var.new_relic_account_id
-        query      = "FROM (${local.nrql_business_latest}) SELECT count(*) AS 'OS' WHERE status = 'AGUARDANDO_APROVACAO' SINCE 30 minutes ago"
-      }
-    }
-
-    widget_billboard {
-      title  = "Concluidas hoje"
-      row    = 1
-      column = 10
-      width  = 3
-      height = 3
-
-      nrql_query {
-        account_id = var.new_relic_account_id
-        query      = "FROM (${local.nrql_business_latest}) SELECT count(*) AS 'OS' WHERE finalizada_hoje = true SINCE 30 minutes ago WITH TIMEZONE 'America/Sao_Paulo'"
-      }
-    }
-
     widget_bar {
       title  = "Status das OS"
-      row    = 4
-      column = 1
-      width  = 12
-      height = 3
+      row    = 1
+      column = 4
+      width  = 9
+      height = 4
 
       nrql_query {
         account_id = var.new_relic_account_id
@@ -221,7 +182,7 @@ resource "newrelic_one_dashboard" "business" {
 
     widget_table {
       title  = "Ordens de servico"
-      row    = 7
+      row    = 5
       column = 1
       width  = 12
       height = 4
@@ -234,20 +195,20 @@ resource "newrelic_one_dashboard" "business" {
 
     widget_bar {
       title  = "Volume diario de ordens de servico"
-      row    = 11
+      row    = 9
       column = 1
       width  = 6
       height = 3
 
       nrql_query {
         account_id = var.new_relic_account_id
-        query      = "FROM OficinaOsOperationalSnapshot SELECT uniqueCount(numero_os) AS 'OS criadas' WHERE ${local.nrql_business_events} AND snapshot_version = 2 AND dias_desde_criacao >= 0 AND dias_desde_criacao < 7 FACET data_criacao_dia SINCE 30 minutes ago LIMIT 7"
+        query      = "FROM OficinaOsOperationalSnapshot SELECT uniqueCount(numero_os) AS 'OS criadas' WHERE ${local.nrql_business_events} AND snapshot_version = 2 AND dias_desde_criacao >= 0 AND dias_desde_criacao < 14 FACET data_criacao_dia SINCE 30 minutes ago LIMIT 14"
       }
     }
 
     widget_bar {
       title  = "Produtividade por mecanico"
-      row    = 11
+      row    = 9
       column = 7
       width  = 6
       height = 3
@@ -260,7 +221,7 @@ resource "newrelic_one_dashboard" "business" {
 
     widget_table {
       title  = "Tempo medio de execucao por status"
-      row    = 14
+      row    = 12
       column = 1
       width  = 6
       height = 3
@@ -273,7 +234,7 @@ resource "newrelic_one_dashboard" "business" {
 
     widget_table {
       title  = "Erros e falhas nas integracoes"
-      row    = 14
+      row    = 12
       column = 7
       width  = 6
       height = 3
