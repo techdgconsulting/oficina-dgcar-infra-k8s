@@ -27,6 +27,7 @@ jobs:
       TF_VAR_new_relic_account_id: ${{ secrets.NEW_RELIC_ACCOUNT_ID || vars.NEW_RELIC_ACCOUNT_ID }}
       NEW_RELIC_API_KEY: ${{ secrets.NEW_RELIC_API_KEY }}
       NEW_RELIC_ACCOUNT_ID: ${{ secrets.NEW_RELIC_ACCOUNT_ID || vars.NEW_RELIC_ACCOUNT_ID }}
+      DASHBOARD_VALIDATION_API_URL: ${{ secrets.API_BACKEND_URL }}
     steps:
       - uses: actions/checkout@v4
       - uses: hashicorp/setup-terraform@v3

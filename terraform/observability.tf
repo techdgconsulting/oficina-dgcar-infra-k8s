@@ -1,9 +1,12 @@
 locals {
-  nrql_business_events  = "app_name = '${local.new_relic_app_name}'"
-  nrql_business_latest  = "FROM OficinaOsOperationalSnapshot SELECT latest(status) AS status, latest(cliente_nome) AS cliente, latest(veiculo) AS veiculo, latest(placa) AS placa, latest(mecanico_nome) AS mecanico, latest(valor_total) AS valor, latest(data_entrega) AS entrega, latest(finalizada_hoje) AS finalizada_hoje WHERE app_name = '${local.new_relic_app_name}' AND snapshot_version = 2 FACET numero_os LIMIT MAX"
-  nrql_api_transactions = "appName = '${local.new_relic_app_name}'"
-  nrql_k8s_cluster      = "clusterName = '${local.new_relic_cluster_name}'"
-  nrql_k8s_app          = "clusterName = '${local.new_relic_cluster_name}' AND namespaceName = '${local.new_relic_namespace_app}'"
+  nrql_business_period     = "aggregationendtime() AS periodo_fim, aggregationendtime() - round(count(*) / rate(count(*), 1 second) * 1000) AS periodo_inicio"
+  nrql_business_completion = "FROM OficinaOsOperationalSnapshot SELECT latest(status) AS status, latest(mecanico_nome) AS mecanico, latest(data_finalizacao_ms) AS finalizada_em, ${local.nrql_business_period} WHERE app_name = '${local.new_relic_app_name}' AND snapshot_version = 2 FACET numero_os LIMIT MAX"
+  nrql_business_durations  = "FROM OficinaOsStatusDurationSnapshot SELECT latest(tempo_ms) AS tempo_ms, latest(fim_ms) AS fim_ms, ${local.nrql_business_period} WHERE app_name = '${local.new_relic_app_name}' FACET numero_os, status, inicio_ms LIMIT MAX"
+  nrql_business_events     = "app_name = '${local.new_relic_app_name}'"
+  nrql_business_latest     = "FROM OficinaOsOperationalSnapshot SELECT latest(status) AS status, latest(cliente_nome) AS cliente, latest(veiculo) AS veiculo, latest(placa) AS placa, latest(mecanico_nome) AS mecanico, latest(valor_total) AS valor, latest(data_entrega) AS entrega, latest(finalizada_hoje) AS finalizada_hoje WHERE app_name = '${local.new_relic_app_name}' AND snapshot_version = 2 FACET numero_os LIMIT MAX"
+  nrql_api_transactions    = "appName = '${local.new_relic_app_name}'"
+  nrql_k8s_cluster         = "clusterName = '${local.new_relic_cluster_name}'"
+  nrql_k8s_app             = "clusterName = '${local.new_relic_cluster_name}' AND namespaceName = '${local.new_relic_namespace_app}'"
 }
 
 resource "newrelic_one_dashboard" "api" {
@@ -189,7 +192,7 @@ resource "newrelic_one_dashboard" "business" {
 
       nrql_query {
         account_id = var.new_relic_account_id
-        query      = "FROM (${local.nrql_business_latest}) SELECT numero_os AS 'OS', cliente AS 'Cliente', veiculo AS 'Veiculo', placa AS 'Placa', mecanico AS 'Mecanico', status AS 'Status', entrega AS 'Data de entrega', valor AS 'Valor' WHERE status != 'CANCELADA' SINCE 30 minutes ago LIMIT 100"
+        query      = "FROM (${local.nrql_business_latest}) SELECT latest(cliente) AS 'Cliente', latest(veiculo) AS 'Veiculo', latest(placa) AS 'Placa', latest(mecanico) AS 'Mecanico', latest(status) AS 'Status', latest(entrega) AS 'Data de entrega', latest(valor) AS 'Valor' WHERE status != 'CANCELADA' FACET numero_os AS 'OS' SINCE 30 minutes ago LIMIT 100"
       }
     }
 
@@ -215,7 +218,7 @@ resource "newrelic_one_dashboard" "business" {
 
       nrql_query {
         account_id = var.new_relic_account_id
-        query      = "FROM OficinaOsEvent SELECT uniqueCount(numero_os) AS 'OS movimentadas' WHERE ${local.nrql_business_events} AND evento = 'STATUS_ALTERADO' AND mecanico_nome != 'NAO_INFORMADO' FACET mecanico_nome SINCE 1 day ago WITH TIMEZONE 'America/Sao_Paulo'"
+        query      = "FROM (${local.nrql_business_completion}) SELECT count(*) AS 'OS finalizadas' WHERE status IN ('FINALIZADA', 'AGUARDANDO_RETIRADA', 'ENTREGUE') AND mecanico NOT IN ('NAO_ATRIBUIDO', 'NAO_INFORMADO') AND finalizada_em >= periodo_inicio AND finalizada_em < periodo_fim FACET mecanico SINCE 1 day ago WITH TIMEZONE 'America/Sao_Paulo' LIMIT MAX"
       }
     }
 
@@ -228,7 +231,7 @@ resource "newrelic_one_dashboard" "business" {
 
       nrql_query {
         account_id = var.new_relic_account_id
-        query      = "FROM OficinaOsEvent SELECT average(tempo_ms) / 60000 AS 'Minutos' WHERE ${local.nrql_business_events} AND metrics_version = 2 AND evento = 'TEMPO_STATUS' AND status IN ('EM_DIAGNOSTICO', 'EM_EXECUCAO', 'FINALIZADA') FACET status SINCE 1 day ago WITH TIMEZONE 'America/Sao_Paulo'"
+        query      = "FROM (${local.nrql_business_durations}) SELECT average(tempo_ms) / 60000 AS 'Minutos' WHERE fim_ms >= periodo_inicio AND fim_ms < periodo_fim AND status IN ('EM_DIAGNOSTICO', 'EM_EXECUCAO', 'FINALIZADA') FACET status SINCE 1 day ago WITH TIMEZONE 'America/Sao_Paulo' LIMIT MAX"
       }
     }
 
