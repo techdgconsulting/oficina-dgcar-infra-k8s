@@ -9,7 +9,7 @@ O dashboard de negocio e independente e nao e modificado por esta publicacao.
 - Uptime: percentual de SyntheticCheck com resultado SUCCESS no periodo selecionado. Nao representa disponibilidade anterior a criacao do monitor.
 - APIs: p95 e media em milissegundos, throughput por minuto e erros HTTP por codigo.
 - CPU e memoria: consumo do container oficina-api por pod e limite real do mesmo container. CPU em cores, memoria em MiB. A linha de limite nao usa requests nem numeros fixos. Se o limite nao existir na telemetria, a linha fica ausente; isso nao indica limite zero.
-- Restarts e HPA: indicadores preexistentes preservados. Nao ha card de pods desejados.
+- Restarts por pod preservados. Nao ha grafico de HPA nem card de pods desejados.
 - Falhas de OS: evento FALHA_PROCESSAMENTO, filtrado por app_name do ambiente.
 - Logs: data/hora, nivel, mensagem, metodo, rota, HTTP, duracao, correlationId, trace.id e pod.
 
@@ -37,9 +37,13 @@ O alerta preexistente de falha de processamento preserva seu limite e duracao, a
 
 1. API: executar Maven/CI e publicar o provider JSON e a configuracao de logging.
 2. Infra: executar CI, fmt, validate e testes de protecao de escopo.
-3. Workflow `Atualizar Dashboard Operacional Homolog`, fase `deploy`: plano limitado ao dashboard novo, coletor, monitor e dois alertas relacionados. Valida escopo e compila as 15 consultas reais via NerdGraph antes de aplicar.
+3. Workflow `Atualizar Dashboard Operacional Homolog`, fase `deploy`: plano limitado ao dashboard novo, coletor, monitor e alertas relacionados. Valida escopo e compila as 14 consultas reais via NerdGraph antes de aplicar.
 4. Verificacao ao vivo: pods ativos contra Kubernetes; limites das duas linhas contra resources.limits; SyntheticCheck com sucesso; duas requisicoes GET com mesmo correlationId, dois traces, campos JSON, correspondencia nas transactions APM e ausencia de duplicacao.
 5. Fase `retire`: somente apos a verificacao anterior passar, remover os dashboards API e Kubernetes antigos. Plano protegido permite apenas essas duas exclusoes. Os outputs antigos passam a apontar para o unificado.
 6. Fase `verify`: repetir verificacao sem apply.
+
+Atualizacoes de layout usam a fase `dashboard` (padrao nos pushes): aplica somente o dashboard e valida suas consultas. Alteracoes no coletor exigem a fase `deploy`, sem repetir a instalacao do Helm em uma simples mudanca de widget.
+
+Em homolog com um unico no sem vaga para o hook do Helm, executar `deploy` com `redeploy_api=true`: a esteira guarda as replicas da API, pausa a aplicacao, conclui o upgrade e restaura a quantidade anterior, mesmo se uma etapa falhar. Ha indisponibilidade temporaria; nao altera a quantidade de nos nem reinicia os pods de sistema.
 
 Planos completos em provisionamentos futuros tambem convergem para o dashboard unificado. A publicacao direcionada nao altera rede, EKS, banco ou massa de negocio.
