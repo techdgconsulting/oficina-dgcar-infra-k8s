@@ -87,6 +87,22 @@ def wait_for(description, check, timeout=240):
         time.sleep(15)
 
 
+def wait_for_external_health(timeout=240):
+    health = {}
+
+    def successful_recent_check():
+        nonlocal health
+        rows = nrql("FROM SyntheticCheck SELECT latest(result) AS result, latest(timestamp) AS checked_at, "
+                    "percentage(count(*), WHERE result = 'SUCCESS') AS uptime "
+                    "WHERE monitorName = 'oficina-dgcar-homolog - Health API' SINCE 10 minutes ago")
+        health = rows[0] if rows else {}
+        return (health.get("result") == "SUCCESS"
+                and health.get("checked_at", 0) >= (time.time() - 300) * 1000)
+
+    wait_for("recent external readiness check succeeds after API recovery", successful_recent_check, timeout)
+    return health
+
+
 def validate_live():
     pods = kubectl("get", "pods", "-n", "oficina", "-l", "app.kubernetes.io/name=oficina-api")["items"]
     active = {p["metadata"]["name"] for p in pods if p["status"]["phase"] == "Running" and any(
@@ -116,12 +132,7 @@ def validate_live():
     config = kubectl("get", "configmap", "oficina-api-config", "-n", "oficina")["data"]
     if config.get("NEW_RELIC_APPLICATION_LOGGING_FORWARDING_ENABLED") != "false":
         raise ValueError("Java forwarding must be disabled before validating the single collector")
-    wait_for("external health checks ingested", lambda: bool(nrql(
-        "FROM SyntheticCheck SELECT count(*) AS checks WHERE monitorName = 'oficina-dgcar-homolog - Health API' SINCE 10 minutes ago")[0]["checks"]))
-    health = nrql("FROM SyntheticCheck SELECT latest(result) AS result, percentage(count(*), WHERE result = 'SUCCESS') AS uptime "
-                  "WHERE monitorName = 'oficina-dgcar-homolog - Health API' SINCE 10 minutes ago")[0]
-    if health["result"] != "SUCCESS":
-        raise ValueError("External readiness is failing")
+    health = wait_for_external_health()
     print("OK external health: " + json.dumps(health))
 
     # Read-only requests, same supplied correlation ID; no business data is created.
@@ -147,10 +158,10 @@ def validate_live():
                 f"WHERE {LOG} AND correlationId = '{correlation}' AND message = 'http_request_completed' SINCE 10 minutes ago")[0]
     if logs["logs"] != 2 or logs["structured"] != 2:
         raise ValueError("Logs duplicated or expected JSON fields missing")
-    transactions = nrql("FROM Transaction SELECT count(*) AS requests WHERE appName = 'oficina-dgcar-api-homolog' "
-                        f"AND correlationId = '{correlation}' SINCE 10 minutes ago")[0]
-    if transactions["requests"] != 2:
-        raise ValueError("Correlation ID not found on both APM transactions")
+    # APM events and stdout logs have independent ingestion intervals.
+    wait_for("both APM transactions received with the same correlation ID", lambda: nrql(
+        "FROM Transaction SELECT count(*) AS requests WHERE appName = 'oficina-dgcar-api-homolog' "
+        f"AND correlationId = '{correlation}' SINCE 10 minutes ago")[0]["requests"] == 2)
     print("OK JSON fields, pod context, APM correlation and no duplicate request logs: " + json.dumps(logs))
 
 

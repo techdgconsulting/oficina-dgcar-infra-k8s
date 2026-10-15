@@ -39,5 +39,31 @@ class ScopeTest(unittest.TestCase):
             operational.validate_plan({"resource_changes": [change("newrelic_one_dashboard.business[0]", ["delete"])]})
 
 
+class ExternalHealthTest(unittest.TestCase):
+    @patch.object(operational.time, "sleep")
+    @patch.object(operational.time, "time", return_value=1000)
+    def test_waits_for_recovery_instead_of_failing_on_previous_outage(self, clock, sleep):
+        results = [[], [{"result": "FAILED", "checked_at": 990000}],
+                   [{"result": "SUCCESS", "checked_at": 1000000, "uptime": 80}]]
+        with patch.object(operational, "nrql", side_effect=results) as query:
+            health = operational.wait_for_external_health()
+        self.assertEqual(query.call_count, 3)
+        self.assertEqual(health["uptime"], 80)
+
+    @patch.object(operational.time, "sleep")
+    @patch.object(operational.time, "time", return_value=1000)
+    def test_does_not_accept_stale_success(self, clock, sleep):
+        results = [[{"result": "SUCCESS", "checked_at": 600000}],
+                   [{"result": "SUCCESS", "checked_at": 1000000}]]
+        with patch.object(operational, "nrql", side_effect=results) as query:
+            operational.wait_for_external_health()
+        self.assertEqual(query.call_count, 2)
+
+    def test_keeps_failure_when_monitor_does_not_recover(self):
+        with patch.object(operational, "nrql", return_value=[{"result": "FAILED", "checked_at": 1000000}]):
+            with self.assertRaisesRegex(ValueError, "Timed out"):
+                operational.wait_for_external_health(timeout=0)
+
+
 if __name__ == "__main__":
     unittest.main()
