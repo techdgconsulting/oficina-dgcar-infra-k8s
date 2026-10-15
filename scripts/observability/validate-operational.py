@@ -158,10 +158,10 @@ def validate_live():
                 f"WHERE {LOG} AND correlationId = '{correlation}' AND message = 'http_request_completed' SINCE 10 minutes ago")[0]
     if logs["logs"] != 2 or logs["structured"] != 2:
         raise ValueError("Logs duplicated or expected JSON fields missing")
-    transactions = nrql("FROM Transaction SELECT count(*) AS requests WHERE appName = 'oficina-dgcar-api-homolog' "
-                        f"AND correlationId = '{correlation}' SINCE 10 minutes ago")[0]
-    if transactions["requests"] != 2:
-        raise ValueError("Correlation ID not found on both APM transactions")
+    # APM events and stdout logs have independent ingestion intervals.
+    wait_for("both APM transactions received with the same correlation ID", lambda: nrql(
+        "FROM Transaction SELECT count(*) AS requests WHERE appName = 'oficina-dgcar-api-homolog' "
+        f"AND correlationId = '{correlation}' SINCE 10 minutes ago")[0]["requests"] == 2)
     print("OK JSON fields, pod context, APM correlation and no duplicate request logs: " + json.dumps(logs))
 
 
