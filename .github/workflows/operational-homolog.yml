@@ -5,7 +5,6 @@ on:
     branches: [homolog]
     paths:
       - terraform/operational.tf
-      - terraform/logging-filters.conf
       - scripts/observability/validate-operational.py
       - .github/workflows/operational-homolog.yml
   workflow_dispatch:
@@ -13,8 +12,12 @@ on:
       phase:
         description: Etapa da publicacao
         type: choice
-        default: deploy
-        options: [deploy, retire, verify]
+        default: dashboard
+        options: [dashboard, deploy, retire, verify]
+      redeploy_api:
+        description: Pausar a API durante o upgrade e subir novamente ao final (homolog)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -35,7 +38,7 @@ jobs:
       TF_VAR_new_relic_license_key: ${{ secrets.NEW_RELIC_LICENSE_KEY }}
       NEW_RELIC_API_KEY: ${{ secrets.NEW_RELIC_API_KEY }}
       NEW_RELIC_ACCOUNT_ID: ${{ secrets.NEW_RELIC_ACCOUNT_ID || vars.NEW_RELIC_ACCOUNT_ID }}
-      OPERATIONAL_PHASE: ${{ inputs.phase || 'deploy' }}
+      OPERATIONAL_PHASE: ${{ inputs.phase || 'dashboard' }}
     steps:
       - uses: actions/checkout@v4
       - uses: hashicorp/setup-terraform@v3
@@ -59,10 +62,22 @@ jobs:
           terraform validate
       - name: Connect to existing cluster
         run: aws eks update-kubeconfig --name oficina-dgcar-homolog-eks --region us-east-1
+      - name: Pause API to free a pod slot for the Helm hook
+        id: pause_api
+        if: inputs.redeploy_api && inputs.phase == 'deploy'
+        run: |
+          set -euo pipefail
+          REPLICAS="$(kubectl get deployment oficina-api -n oficina -o jsonpath='{.spec.replicas}')"
+          test "$REPLICAS" -gt 0
+          echo "replicas=$REPLICAS" >> "$GITHUB_OUTPUT"
+          kubectl scale deployment/oficina-api -n oficina --replicas=0
+          kubectl wait --for=delete pod -n oficina -l app.kubernetes.io/name=oficina-api --timeout=180s
       - name: Plan operational resources only
         working-directory: terraform
         run: |
-          if [ "$OPERATIONAL_PHASE" = retire ]; then
+          if [ "$OPERATIONAL_PHASE" = dashboard ]; then
+            terraform plan -target=newrelic_one_dashboard.operational -out=operational.tfplan
+          elif [ "$OPERATIONAL_PHASE" = retire ]; then
             terraform plan -target=newrelic_one_dashboard.api -target=newrelic_one_dashboard.kubernetes -out=operational.tfplan
           else
             terraform plan \
@@ -86,10 +101,17 @@ jobs:
         working-directory: terraform
         run: terraform apply -input=false operational.tfplan
       - name: Wait for logging collector
-        if: inputs.phase != 'retire'
+        if: env.OPERATIONAL_PHASE == 'deploy' || env.OPERATIONAL_PHASE == 'verify'
         run: kubectl rollout status daemonset/newrelic-bundle-newrelic-logging -n newrelic --timeout=180s
+      - name: Restore API after the Helm upgrade
+        if: always() && steps.pause_api.outputs.replicas != ''
+        env:
+          PREVIOUS_REPLICAS: ${{ steps.pause_api.outputs.replicas }}
+        run: |
+          kubectl scale deployment/oficina-api -n oficina --replicas="$PREVIOUS_REPLICAS"
+          kubectl rollout status deployment/oficina-api -n oficina --timeout=300s
       - name: Verify deployed telemetry and request correlation
-        if: inputs.phase != 'retire'
+        if: env.OPERATIONAL_PHASE == 'deploy' || env.OPERATIONAL_PHASE == 'verify'
         run: python3 scripts/observability/validate-operational.py live terraform/operational-plan.json
       - name: Publish dashboard link
         if: always()

@@ -42,4 +42,8 @@ O alerta preexistente de falha de processamento preserva seu limite e duracao, a
 5. Fase `retire`: somente apos a verificacao anterior passar, remover os dashboards API e Kubernetes antigos. Plano protegido permite apenas essas duas exclusoes. Os outputs antigos passam a apontar para o unificado.
 6. Fase `verify`: repetir verificacao sem apply.
 
+Atualizacoes de layout usam a fase `dashboard` (padrao nos pushes): aplica somente o dashboard e valida suas consultas. Alteracoes no coletor exigem a fase `deploy`, sem repetir a instalacao do Helm em uma simples mudanca de widget.
+
+Em homolog com um unico no sem vaga para o hook do Helm, executar `deploy` com `redeploy_api=true`: a esteira guarda as replicas da API, pausa a aplicacao, conclui o upgrade e restaura a quantidade anterior, mesmo se uma etapa falhar. Ha indisponibilidade temporaria; nao altera a quantidade de nos nem reinicia os pods de sistema.
+
 Planos completos em provisionamentos futuros tambem convergem para o dashboard unificado. A publicacao direcionada nao altera rede, EKS, banco ou massa de negocio.
