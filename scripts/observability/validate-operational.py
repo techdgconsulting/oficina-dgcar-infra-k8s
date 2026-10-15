@@ -53,7 +53,7 @@ def validate_plan(plan):
     dashboard = next(c["change"]["after"] for c in plan["resource_changes"]
                      if c["address"] == "newrelic_one_dashboard.operational[0]")
     queries = list(business.widgets(dashboard))
-    if len(queries) != 15:
+    if len(queries) != 14:
         raise ValueError("Unexpected operational widget count")
     for title, query in queries:
         for variable in ("pod", "level", "correlation"):

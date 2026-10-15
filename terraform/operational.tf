@@ -176,17 +176,6 @@ resource "newrelic_one_dashboard" "operational" {
       }
     }
     widget_line {
-      title  = "HPA replicas atuais x desejadas"
-      row    = 13
-      column = 7
-      width  = 6
-      height = 3
-      nrql_query {
-        account_id = var.new_relic_account_id
-        query      = "FROM K8sHpaSample SELECT latest(currentReplicas), latest(desiredReplicas), latest(maxReplicas) WHERE ${local.nrql_k8s_app} FACET hpaName TIMESERIES"
-      }
-    }
-    widget_line {
       title  = "Falhas de OS ao longo do tempo"
       row    = 16
       column = 1
