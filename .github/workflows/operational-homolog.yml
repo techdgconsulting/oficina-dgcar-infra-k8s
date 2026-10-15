@@ -72,6 +72,11 @@ jobs:
           echo "replicas=$REPLICAS" >> "$GITHUB_OUTPUT"
           kubectl scale deployment/oficina-api -n oficina --replicas=0
           kubectl wait --for=delete pod -n oficina -l app.kubernetes.io/name=oficina-api --timeout=180s
+          # A leftover post-upgrade job can occupy the slot needed by the pre-upgrade job.
+          kubectl delete job -n newrelic \
+            newrelic-bundle-nri-metadata-injection-admission-create \
+            newrelic-bundle-nri-metadata-injection-admission-patch \
+            --ignore-not-found --wait=true --timeout=90s
       - name: Plan operational resources only
         working-directory: terraform
         run: |
@@ -103,6 +108,13 @@ jobs:
       - name: Wait for logging collector
         if: env.OPERATIONAL_PHASE == 'deploy' || env.OPERATIONAL_PHASE == 'verify'
         run: kubectl rollout status daemonset/newrelic-bundle-newrelic-logging -n newrelic --timeout=180s
+      - name: Clear failed hooks before restoring API
+        if: failure() && steps.pause_api.outputs.replicas != ''
+        run: |
+          kubectl delete job -n newrelic \
+            newrelic-bundle-nri-metadata-injection-admission-create \
+            newrelic-bundle-nri-metadata-injection-admission-patch \
+            --ignore-not-found --wait=true --timeout=90s
       - name: Restore API after the Helm upgrade
         if: always() && steps.pause_api.outputs.replicas != ''
         env:
