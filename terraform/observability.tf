@@ -220,6 +220,12 @@ resource "newrelic_nrql_alert_condition" "os_processing_failure" {
   description                  = "Alerta quando a API registra falha no processamento de ordens de servico."
   enabled                      = true
   violation_time_limit_seconds = 3600
+  # Sparse failure events: evaluate empty windows as zero so recovery can close.
+  aggregation_method = "cadence"
+  aggregation_window = 60
+  aggregation_delay  = 60
+  fill_option        = "static"
+  fill_value         = 0
 
   nrql {
     query = "FROM OficinaOsEvent SELECT count(*) WHERE ${local.nrql_business_events} AND evento = 'FALHA_PROCESSAMENTO'"

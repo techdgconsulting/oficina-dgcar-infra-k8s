@@ -77,6 +77,9 @@ jobs:
           terraform show -json operational.tfplan > operational-plan.json
       - name: Validate scope and NRQL before apply
         run: python3 scripts/observability/validate-operational.py plan terraform/operational-plan.json
+      - name: Revalidate unified dashboard before retiring old dashboards
+        if: inputs.phase == 'retire'
+        run: python3 scripts/observability/validate-operational.py live terraform/operational-plan.json
       - name: Apply operational plan
         # Retirement is dispatched separately after the live checks pass.
         if: inputs.phase != 'verify'
