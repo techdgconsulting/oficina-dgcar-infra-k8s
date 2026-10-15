@@ -320,7 +320,15 @@ resource "helm_release" "new_relic_kubernetes" {
       }
 
       "newrelic-logging" = {
-        enabled = false
+        enabled     = true
+        lowDataMode = false
+        fluentBit = {
+          # Only API logs. JSON parsing preserves MDC and New Relic linking fields.
+          path = "/var/log/containers/oficina-api-*_${local.new_relic_namespace_app}_oficina-api-*.log"
+          config = {
+            filters = file("${path.module}/logging-filters.conf")
+          }
+        }
       }
     })
   ]

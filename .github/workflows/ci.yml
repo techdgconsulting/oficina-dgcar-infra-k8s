@@ -69,3 +69,6 @@ jobs:
 
       - name: Validate shell scripts
         run: bash -n scripts/preflight/*.sh scripts/github-actions/*.sh scripts/aws/*.sh scripts/smoke/*.sh
+
+      - name: Validate operational deployment guards
+        run: python3 -m unittest discover -s scripts/observability -p 'test_*.py'

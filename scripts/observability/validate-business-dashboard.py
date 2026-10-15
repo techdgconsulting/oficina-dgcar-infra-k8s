@@ -148,7 +148,12 @@ def validate_business_values(queries):
 
 def main():
     with open(sys.argv[1], encoding="utf-8") as source:
-        dashboard = validate_scope(json.load(source))
+        plan = json.load(source)
+    dashboard = validate_scope(plan)
+    if all(c["change"]["actions"] == ["no-op"] for c in plan.get("resource_changes", [])
+           if c["address"] == "newrelic_one_dashboard.business[0]"):
+        print("Business dashboard unchanged; historical dataset validation not required")
+        return
     queries = list(widgets(dashboard))
     if not queries:
         raise ValueError("Business dashboard contains no queries")

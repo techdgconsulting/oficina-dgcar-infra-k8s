@@ -59,13 +59,13 @@ output "new_relic_observability_enabled" {
 }
 
 output "new_relic_dashboard_api_guid" {
-  description = "GUID of the New Relic API dashboard."
-  value       = nonsensitive(local.new_relic_observability_enabled ? newrelic_one_dashboard.api[0].guid : null)
+  description = "Compatibility alias for the unified API and Kubernetes dashboard."
+  value       = nonsensitive(local.new_relic_observability_enabled ? newrelic_one_dashboard.operational[0].guid : null)
 }
 
 output "new_relic_dashboard_kubernetes_guid" {
-  description = "GUID of the New Relic Kubernetes dashboard."
-  value       = nonsensitive(local.new_relic_observability_enabled ? newrelic_one_dashboard.kubernetes[0].guid : null)
+  description = "Compatibility alias for the unified API and Kubernetes dashboard."
+  value       = nonsensitive(local.new_relic_observability_enabled ? newrelic_one_dashboard.operational[0].guid : null)
 }
 
 output "new_relic_dashboard_business_guid" {
@@ -101,4 +101,9 @@ output "api_gateway_endpoint" {
 output "api_gateway_execution_arn" {
   description = "HTTP API Gateway execution ARN."
   value       = var.enable_api_gateway ? aws_apigatewayv2_api.main[0].execution_arn : null
+}
+
+output "new_relic_dashboard_operational_guid" {
+  description = "GUID of the unified API and Kubernetes dashboard."
+  value       = nonsensitive(local.new_relic_observability_enabled ? newrelic_one_dashboard.operational[0].guid : null)
 }

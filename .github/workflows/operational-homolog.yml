@@ -1,0 +1,96 @@
+name: Atualizar Dashboard Operacional Homolog
+
+on:
+  push:
+    branches: [homolog]
+    paths:
+      - terraform/operational.tf
+      - terraform/logging-filters.conf
+      - scripts/observability/validate-operational.py
+      - .github/workflows/operational-homolog.yml
+  workflow_dispatch:
+    inputs:
+      phase:
+        description: Etapa da publicacao
+        type: choice
+        default: deploy
+        options: [deploy, retire, verify]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ambiente-academico-homolog
+  cancel-in-progress: false
+
+jobs:
+  operational:
+    if: github.ref == 'refs/heads/homolog'
+    runs-on: ubuntu-latest
+    environment: homolog
+    env:
+      TF_VAR_environment: homolog
+      TF_VAR_new_relic_api_key: ${{ secrets.NEW_RELIC_API_KEY }}
+      TF_VAR_new_relic_account_id: ${{ secrets.NEW_RELIC_ACCOUNT_ID || vars.NEW_RELIC_ACCOUNT_ID }}
+      TF_VAR_new_relic_license_key: ${{ secrets.NEW_RELIC_LICENSE_KEY }}
+      NEW_RELIC_API_KEY: ${{ secrets.NEW_RELIC_API_KEY }}
+      NEW_RELIC_ACCOUNT_ID: ${{ secrets.NEW_RELIC_ACCOUNT_ID || vars.NEW_RELIC_ACCOUNT_ID }}
+      OPERATIONAL_PHASE: ${{ inputs.phase || 'deploy' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.15.8
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION || vars.AWS_REGION || 'us-east-1' }}
+      - name: Initialize existing state
+        working-directory: terraform
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
+            -backend-config="key=${{ secrets.TF_STATE_KEY }}" \
+            -backend-config="region=${{ secrets.AWS_REGION || vars.AWS_REGION || 'us-east-1' }}" \
+            -backend-config="use_lockfile=true"
+          terraform fmt -check
+          terraform validate
+      - name: Connect to existing cluster
+        run: aws eks update-kubeconfig --name oficina-dgcar-homolog-eks --region us-east-1
+      - name: Plan operational resources only
+        working-directory: terraform
+        run: |
+          if [ "$OPERATIONAL_PHASE" = retire ]; then
+            terraform plan -target=newrelic_one_dashboard.api -target=newrelic_one_dashboard.kubernetes -out=operational.tfplan
+          else
+            terraform plan \
+              -target=newrelic_one_dashboard.operational \
+              -target=newrelic_synthetics_monitor.api_health \
+              -target=newrelic_nrql_alert_condition.external_health \
+              -target=newrelic_nrql_alert_condition.os_processing_failure \
+              -target=newrelic_nrql_alert_condition.health_down \
+              -target=helm_release.new_relic_kubernetes \
+              -out=operational.tfplan
+          fi
+          terraform show -json operational.tfplan > operational-plan.json
+      - name: Validate scope and NRQL before apply
+        run: python3 scripts/observability/validate-operational.py plan terraform/operational-plan.json
+      - name: Apply operational plan
+        # Retirement is dispatched separately after the live checks pass.
+        if: inputs.phase != 'verify'
+        working-directory: terraform
+        run: terraform apply -input=false operational.tfplan
+      - name: Wait for logging collector
+        if: inputs.phase != 'retire'
+        run: kubectl rollout status daemonset/newrelic-bundle-newrelic-logging -n newrelic --timeout=180s
+      - name: Verify deployed telemetry and request correlation
+        if: inputs.phase != 'retire'
+        run: python3 scripts/observability/validate-operational.py live terraform/operational-plan.json
+      - name: Publish dashboard link
+        if: always()
+        working-directory: terraform
+        run: |
+          GUID="$(terraform output -raw new_relic_dashboard_operational_guid)"
+          echo "Dashboard: https://one.newrelic.com/redirect/entity/$GUID" >> "$GITHUB_STEP_SUMMARY"
