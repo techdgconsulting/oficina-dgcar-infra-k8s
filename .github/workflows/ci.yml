@@ -72,3 +72,6 @@ jobs:
 
       - name: Validate operational deployment guards
         run: python3 -m unittest discover -s scripts/observability -p 'test_*.py'
+
+      - name: Validate HPA node configuration safeguards
+        run: python3 -m unittest discover -s scripts/hpa -p 'test_*.py'
