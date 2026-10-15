@@ -8,6 +8,12 @@ on:
       - scripts/observability/**
       - .github/workflows/dashboard-homolog.yml
   workflow_dispatch:
+    inputs:
+      scope:
+        description: Escopo da observabilidade
+        type: choice
+        default: business
+        options: [business, inspect]
 
 permissions:
   contents: read
@@ -18,7 +24,7 @@ concurrency:
 
 jobs:
   dashboard:
-    if: github.ref == 'refs/heads/homolog'
+    if: github.ref == 'refs/heads/homolog' || inputs.scope == 'inspect'
     runs-on: ubuntu-latest
     environment: homolog
     env:
@@ -39,7 +45,13 @@ jobs:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION || vars.AWS_REGION || 'us-east-1' }}
+      - name: Inspect operational telemetry (read only)
+        if: inputs.scope == 'inspect'
+        run: |
+          aws eks update-kubeconfig --name oficina-dgcar-homolog-eks --region us-east-1
+          python3 scripts/observability/inspect-operational.py
       - name: Initialize existing state
+        if: inputs.scope != 'inspect'
         working-directory: terraform
         run: |
           terraform init \
@@ -48,17 +60,21 @@ jobs:
             -backend-config="region=${{ secrets.AWS_REGION || vars.AWS_REGION || 'us-east-1' }}" \
             -backend-config="use_lockfile=true"
       - name: Validate Terraform
+        if: inputs.scope != 'inspect'
         working-directory: terraform
         run: |
           terraform fmt -check
           terraform validate
       - name: Plan business dashboard only
+        if: inputs.scope != 'inspect'
         working-directory: terraform
         run: |
           terraform plan -target=newrelic_one_dashboard.business -out=dashboard.tfplan
           terraform show -json dashboard.tfplan > dashboard-plan.json
       - name: Validate scope and execute dashboard queries in New Relic
+        if: inputs.scope != 'inspect'
         run: python3 scripts/observability/validate-business-dashboard.py terraform/dashboard-plan.json
       - name: Apply reviewed dashboard plan
+        if: inputs.scope != 'inspect'
         working-directory: terraform
         run: terraform apply -input=false dashboard.tfplan
