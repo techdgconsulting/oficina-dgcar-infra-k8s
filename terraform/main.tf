@@ -301,6 +301,16 @@ resource "helm_release" "new_relic_kubernetes" {
       "newrelic-infrastructure" = {
         enabled    = true
         privileged = true
+        # Single-node workload measured at 12-21 MiB per container in homolog.
+        # Keep the chart limits; adjust only reservations to fit a second API pod.
+        ksm = {
+          ksm       = { resources = { requests = { cpu = "25m", memory = "32Mi" } } }
+          forwarder = { resources = { requests = { cpu = "25m", memory = "32Mi" } } }
+        }
+        kubelet = {
+          kubelet = { resources = { requests = { cpu = "25m", memory = "32Mi" } } }
+          agent   = { resources = { requests = { cpu = "25m", memory = "32Mi" } } }
+        }
       }
 
       "nri-metadata-injection" = {
@@ -334,7 +344,8 @@ resource "helm_release" "new_relic_kubernetes" {
   ]
 
   depends_on = [
-    aws_eks_node_group.main
+    aws_eks_node_group.main,
+    kubernetes_job_v1.node_pod_capacity
   ]
 }
 
