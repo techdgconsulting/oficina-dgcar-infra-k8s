@@ -32,8 +32,12 @@ class SafeguardsTest(unittest.TestCase):
 
     def test_rejects_destructive_helm_replacement(self):
         with self.assertRaisesRegex(ValueError, "Unapproved"):
-            scope.validate({"resource_changes": [{"address": "helm_release.new_relic_kubernetes", "mode": "managed",
+            scope.validate({"resource_changes": [{"address": "helm_release.new_relic_kubernetes[0]", "mode": "managed",
                                                    "change": {"actions": ["delete", "create"]}}]})
+
+    def test_accepts_existing_counted_new_relic_release_update(self):
+        scope.validate({"resource_changes": [{"address": "helm_release.new_relic_kubernetes[0]", "mode": "managed",
+                                               "change": {"actions": ["update"]}}]})
 
     def test_second_replica_must_fit_memory_even_when_pod_slots_exist(self):
         node = {"status": {"allocatable": {"cpu": "1930m", "memory": "1467996Ki", "pods": "17"}}}
