@@ -5,7 +5,7 @@ import sys
 ALLOWED = {
     "kubernetes_env.vpc_cni_prefix", "kubernetes_config_map_v1.node_pod_capacity",
     "kubernetes_job_v1.node_pod_capacity", "helm_release.metrics_server",
-    "helm_release.new_relic_kubernetes",
+    "helm_release.new_relic_kubernetes[0]",
 }
 
 
