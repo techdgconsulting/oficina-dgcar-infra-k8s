@@ -514,11 +514,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.component == 'platform' && inputs.source_sha || github.sha }}
+          ref: ${{ github.sha }}
       - name: Validate deployment request
         run: |
           python3 -m unittest discover -s scripts/ci -p 'test_*.py'
           python3 scripts/ci/coordinate.py validate
+      - name: Checkout validated platform source
+        if: env.COMPONENT == 'platform'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DEPLOY_SOURCE_SHA }}
       - name: Prepare shell scripts
         run: find scripts -type f -name "*.sh" -exec chmod +x {} \;
       - name: Deploy selected application or database
