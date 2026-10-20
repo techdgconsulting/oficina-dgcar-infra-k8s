@@ -244,7 +244,7 @@ A orquestração valida identidade AWS, state e locks; remove workloads e Servic
 
 Os workflows de remoção despacham `action=destroy-infra` e `action=destroy` para os workers, na branch do ambiente (`homolog` ou `main`), com confirmação e identificação do coordenador. Não existe gatilho automático de destroy.
 
-O banco utiliza `db.t3.micro`, `gp2` e retenção automática zero nos dois ambientes. Prod mantém proteção contra exclusão e snapshot final. A preparação de destroy remove a proteção de forma explícita e, em prod, usa um snapshot final único por execução. Consulte o [README de infra-db](https://github.com/techdgconsulting/oficina-dgcar-infra-db/blob/homolog/README.md).
+O banco utiliza `db.t3.micro`, `gp2` e retenção automática zero nos dois ambientes. O destroy de homolog e prod remove os recursos sem gerar snapshot final ou reter backups do RDS. Prod mantém proteção contra exclusão durante a operação; a preparação do destroy confirmado a desativa e sincroniza a política sem snapshot. O worker do banco também remove snapshots manuais e backups retidos da instância exata do ambiente, inclusive de execuções anteriores. A verificação final falha se encontrar esses resíduos. O backend S3 compartilhado do Terraform permanece como infraestrutura de controle, fora do destroy do ambiente. Consulte o [README de infra-db](https://github.com/techdgconsulting/oficina-dgcar-infra-db/blob/homolog/README.md).
 
 ### Tratamento de falhas operacionais
 
@@ -252,7 +252,7 @@ O banco utiliza `db.t3.micro`, `gp2` e retenção automática zero nos dois ambi
 |---|---|
 | URI inválida no Gateway | Integrações dependentes são aplicadas após obter os endpoints reais da Lambda e da API. |
 | Restrições Free Tier no RDS | Confira classe, storage e retenção definidos para o ambiente no repositório de banco. |
-| Snapshot final ou deletion protection | Homolog usa remoção sem snapshot; prod exige verificar proteção e nome do snapshot na referência acionada. |
+| Snapshot final ou deletion protection | Ambos removem sem snapshot final. Confira a preparação que desativa a proteção e sincroniza o state, além das permissões para excluir snapshots e backups retidos do ambiente. |
 | Remoção da Lambda | Confira suporte a `destroy-infra`, empacotamento para refresh do state e liberação do security group na referência acionada. |
 | Outputs ou secrets de integração ausentes | Confira a limpeza idempotente do workflow e os valores publicados pela orquestração. |
 | Backend e região | O backend usa `use_lockfile=true`; confira a região configurada, com fallback operacional `us-east-1` nos workflows que o definem. |
