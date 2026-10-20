@@ -23,8 +23,8 @@ for attempt in $(seq 1 60); do
     --workflow "$workflow" \
     --branch "$ref" \
     --limit 30 \
-    --json databaseId,event,status \
-    --jq '.[] | select(.event == "workflow_dispatch" and (.status == "queued" or .status == "in_progress")) | .databaseId')
+    --json databaseId,event,status,displayTitle \
+    --jq '.[] | select((.displayTitle | contains("| '"$GITHUB_RUN_ID"' |")) and .event == "workflow_dispatch" and (.status == "queued" or .status == "in_progress")) | .databaseId')
 
   if [ -z "$run_id" ]; then
     while read -r candidate_run_id; do
@@ -37,8 +37,8 @@ for attempt in $(seq 1 60); do
       --workflow "$workflow" \
       --branch "$ref" \
       --limit 30 \
-      --json databaseId,event \
-      --jq '.[] | select(.event == "workflow_dispatch") | .databaseId')
+      --json databaseId,event,displayTitle \
+      --jq '.[] | select((.displayTitle | contains("| '"$GITHUB_RUN_ID"' |")) and .event == "workflow_dispatch") | .databaseId')
   fi
 
   if [ -n "$run_id" ]; then
