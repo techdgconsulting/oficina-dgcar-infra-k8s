@@ -143,14 +143,14 @@ resource "newrelic_one_dashboard" "operational" {
       }
     }
     widget_line {
-      title  = "CPU por pod - consumo e limite (cores)"
+      title  = "CPU por pod - consumo, alvo HPA e limite (cores)"
       row    = 10
       column = 1
       width  = 6
       height = 3
       nrql_query {
         account_id = var.new_relic_account_id
-        query      = "FROM K8sContainerSample SELECT average(cpuUsedCores) AS 'Consumo (cores)', latest(cpuLimitCores) AS 'Limite provisionado (cores)' WHERE ${local.nrql_operational_containers} AND podName LIKE {{pod}} FACET podName TIMESERIES"
+        query      = "FROM K8sContainerSample SELECT average(cpuUsedCores) AS 'Media (cores)', max(cpuUsedCores) AS 'Maximo observado (cores)', latest(cpuRequestedCores) * 0.7 AS 'Alvo HPA 70% (cores)', latest(cpuLimitCores) AS 'Limite provisionado (cores)' WHERE ${local.nrql_operational_containers} AND podName LIKE {{pod}} FACET podName TIMESERIES"
       }
     }
     widget_line {
