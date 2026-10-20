@@ -17,9 +17,13 @@ gh run list \
   --json databaseId \
   --jq '.[].databaseId' > "$marker_file"
 
+source_sha="${DEPLOY_SOURCE_SHA:-$(gh api "repos/$repo/commits/$ref" --jq '.sha')}"
 gh workflow run "$workflow" \
   --repo "$repo" \
   --ref "$ref" \
+  -f orchestrated=true \
+  -f parent_run_id="$GITHUB_RUN_ID" \
+  -f source_sha="$source_sha" \
   "$@"
 
 echo "Workflow enviado: $repo/$workflow"

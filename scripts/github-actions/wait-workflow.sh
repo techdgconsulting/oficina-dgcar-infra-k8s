@@ -23,8 +23,8 @@ for attempt in $(seq 1 60); do
     --workflow "$workflow" \
     --branch "$ref" \
     --limit 30 \
-    --json databaseId,event,status \
-    --jq '.[] | select(.event == "workflow_dispatch" and (.status == "queued" or .status == "in_progress")) | .databaseId')
+    --json databaseId,event,status,displayTitle \
+    --jq '.[] | select((.displayTitle | contains("| '"$GITHUB_RUN_ID"' |")) and .event == "workflow_dispatch" and (.status == "queued" or .status == "in_progress")) | .databaseId')
 
   if [ -z "$run_id" ]; then
     while read -r candidate_run_id; do
@@ -37,8 +37,8 @@ for attempt in $(seq 1 60); do
       --workflow "$workflow" \
       --branch "$ref" \
       --limit 30 \
-      --json databaseId,event \
-      --jq '.[] | select(.event == "workflow_dispatch") | .databaseId')
+      --json databaseId,event,displayTitle \
+      --jq '.[] | select((.displayTitle | contains("| '"$GITHUB_RUN_ID"' |")) and .event == "workflow_dispatch") | .databaseId')
   fi
 
   if [ -n "$run_id" ]; then
@@ -55,7 +55,27 @@ if [ -z "$run_id" ]; then
 fi
 
 echo "Aguardando workflow $repo/$workflow run $run_id"
-gh run watch "$run_id" --repo "$repo" --exit-status
+
+for attempt in $(seq 1 180); do
+  run_json="$(gh run view "$run_id" --repo "$repo" --json status,conclusion 2>/tmp/gh-run-view-error.log || true)"
+
+  if [ -z "$run_json" ]; then
+    echo "Falha temporaria ao consultar workflow $repo/$workflow run $run_id: tentativa $attempt/180"
+    cat /tmp/gh-run-view-error.log
+    sleep 10
+    continue
+  fi
+
+  status="$(echo "$run_json" | jq -r '.status')"
+  conclusion="$(echo "$run_json" | jq -r '.conclusion // empty')"
+
+  if [ "$status" = "completed" ]; then
+    break
+  fi
+
+  echo "Workflow em andamento: $repo/$workflow run $run_id status=$status tentativa $attempt/180"
+  sleep 10
+done
 
 conclusion="$(gh run view "$run_id" --repo "$repo" --json conclusion --jq '.conclusion')"
 if [ "$conclusion" != "success" ]; then

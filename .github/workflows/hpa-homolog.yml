@@ -1,0 +1,131 @@
+name: Validar Escala HPA Homolog
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: Configurar suporte ao HPA ou apenas repetir o teste
+        type: choice
+        default: configure-and-test
+        options: [configure-and-test, test-only]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ambiente-academico-homolog
+  cancel-in-progress: false
+  queue: max
+
+jobs:
+  hpa:
+    if: github.ref == 'refs/heads/homolog'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    environment: homolog
+    env:
+      TF_VAR_environment: homolog
+      TF_VAR_new_relic_api_key: ${{ secrets.NEW_RELIC_API_KEY }}
+      TF_VAR_new_relic_account_id: ${{ secrets.NEW_RELIC_ACCOUNT_ID || vars.NEW_RELIC_ACCOUNT_ID }}
+      TF_VAR_new_relic_license_key: ${{ secrets.NEW_RELIC_LICENSE_KEY }}
+      NEW_RELIC_API_KEY: ${{ secrets.NEW_RELIC_API_KEY }}
+      NEW_RELIC_ACCOUNT_ID: ${{ secrets.NEW_RELIC_ACCOUNT_ID || vars.NEW_RELIC_ACCOUNT_ID }}
+      HPA_RESULTS_DIR: hpa-results
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.15.8
+          terraform_wrapper: false
+      - uses: grafana/setup-k6-action@v1
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION || vars.AWS_REGION || 'us-east-1' }}
+      - name: Connect to existing node
+        run: |
+          aws eks update-kubeconfig --name oficina-dgcar-homolog-eks --region us-east-1
+          test "$(kubectl get nodes -o json | python3 -c 'import json,sys; print(len(json.load(sys.stdin)["items"]))')" = 1
+      - name: Initialize existing Terraform state
+        working-directory: terraform
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
+            -backend-config="key=${{ secrets.TF_STATE_KEY }}" \
+            -backend-config="region=${{ secrets.AWS_REGION || vars.AWS_REGION || 'us-east-1' }}" \
+            -backend-config="use_lockfile=true"
+          terraform fmt -check
+          terraform validate
+      - name: Pause API for the one-shot node configuration
+        id: pause
+        if: inputs.action != 'test-only'
+        run: |
+          set -euo pipefail
+          REPLICAS="$(kubectl get deployment oficina-api -n oficina -o jsonpath='{.spec.replicas}')"
+          test "$REPLICAS" -gt 0
+          echo "replicas=$REPLICAS" >> "$GITHUB_OUTPUT"
+          python3 scripts/hpa/ensure-prefix.py capture
+          kubectl scale deployment/oficina-api -n oficina --replicas=0
+          kubectl wait --for=delete pod -n oficina -l app.kubernetes.io/name=oficina-api --timeout=180s
+          kubectl delete job -n newrelic \
+            newrelic-bundle-nri-metadata-injection-admission-create \
+            newrelic-bundle-nri-metadata-injection-admission-patch --ignore-not-found --wait=true
+      - name: Plan VPC CNI prefix configuration
+        if: inputs.action != 'test-only'
+        working-directory: terraform
+        run: |
+          terraform plan -target=kubernetes_env.vpc_cni_prefix -out=cni.tfplan
+          terraform show -json cni.tfplan > cni-plan.json
+          python3 ../scripts/hpa/validate-plan.py cni-plan.json
+          terraform apply -input=false cni.tfplan
+      - name: Ensure prefix capacity on the existing EC2
+        if: inputs.action != 'test-only'
+        run: python3 scripts/hpa/ensure-prefix.py ensure
+      - name: Plan HPA support only
+        working-directory: terraform
+        run: |
+          terraform plan -target=helm_release.metrics_server -out=hpa.tfplan
+          terraform show -json hpa.tfplan > hpa-plan.json
+      - name: Reject node or dashboard changes
+        run: python3 scripts/hpa/validate-plan.py terraform/hpa-plan.json
+      - name: Apply HPA support
+        if: inputs.action != 'test-only'
+        working-directory: terraform
+        run: terraform apply -input=false hpa.tfplan
+      - name: Diagnose failed node configuration
+        if: failure() && steps.pause.outputs.replicas != ''
+        run: |
+          kubectl logs -n kube-system -l app.kubernetes.io/name=oficina-node-pod-capacity --tail=30 || true
+          kubectl get pods -A
+      - name: Restore API
+        if: always() && steps.pause.outputs.replicas != ''
+        env:
+          REPLICAS: ${{ steps.pause.outputs.replicas }}
+        run: |
+          kubectl delete job -n newrelic \
+            newrelic-bundle-nri-metadata-injection-admission-create \
+            newrelic-bundle-nri-metadata-injection-admission-patch --ignore-not-found --wait=true
+          kubectl scale deployment/oficina-api -n oficina --replicas="$REPLICAS"
+          kubectl rollout status deployment/oficina-api -n oficina --timeout=360s
+      - name: Wait for resource metrics
+        run: |
+          kubectl wait --for=condition=Available apiservice/v1beta1.metrics.k8s.io --timeout=180s
+          kubectl rollout status deployment/metrics-server -n kube-system --timeout=180s
+          python3 scripts/hpa/preflight.py
+      - name: Prove HPA scale up and down on the same node
+        run: python3 scripts/hpa/prove-scaling.py
+      - name: Restore HPA test configuration
+        if: always()
+        run: python3 scripts/hpa/prove-scaling.py restore
+      - name: Verify New Relic still receives resources and correlated logs
+        run: python3 scripts/observability/validate-operational.py live terraform/hpa-plan.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hpa-scaling-evidence
+          path: |
+            hpa-results/scaling.json
+            hpa-results/k6-summary.json
+            hpa-results/k6.log
+          if-no-files-found: ignore
