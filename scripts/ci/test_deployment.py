@@ -65,6 +65,9 @@ class DeploymentSafetyTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             d.verify_parent(parent(), "homolog", "homolog", "destroy")
 
+    def test_homolog_recovery_can_use_homolog_coordinator(self):
+        d.verify_parent(parent(workflow="destroy", branch="homolog"), "homolog", "homolog", "destroy")
+
     def test_existing_manual_destroy_allowed(self):
         d.verify_parent(parent(workflow="destroy", branch="main"), "homolog", "main", "destroy")
 

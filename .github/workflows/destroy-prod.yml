@@ -27,7 +27,7 @@ env:
 jobs:
   destroy:
     name: destruir prod
-    if: inputs.confirm == 'DESTRUIR_PROD'
+    if: github.event_name == 'workflow_dispatch' && github.ref_name == 'main' && inputs.confirm == 'DESTRUIR_PROD'
     runs-on: ubuntu-latest
     environment: prod
 

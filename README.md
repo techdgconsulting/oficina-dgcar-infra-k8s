@@ -242,7 +242,7 @@ A orquestração valida identidade AWS, state e locks; remove workloads e Servic
 
 ### Compatibilidade entre repositórios
 
-Os workflows de remoção despacham `action=destroy-infra` e `action=destroy` para os workers, na referência de recuperação `main`, com confirmação e identificação do coordenador. Não existe gatilho automático de destroy.
+Os workflows de remoção despacham `action=destroy-infra` e `action=destroy` para os workers, na branch do ambiente (`homolog` ou `main`), com confirmação e identificação do coordenador. Não existe gatilho automático de destroy.
 
 O banco utiliza `db.t3.micro`, `gp2` e retenção automática zero nos dois ambientes. Prod mantém proteção contra exclusão e snapshot final. A preparação de destroy remove a proteção de forma explícita e, em prod, usa um snapshot final único por execução. Consulte o [README de infra-db](https://github.com/techdgconsulting/oficina-dgcar-infra-db/blob/homolog/README.md).
 
