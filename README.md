@@ -55,7 +55,7 @@ Esses comandos validam configuração e proteções; não provisionam a AWS. Um 
 
 ## Provisionamento completo
 
-O provisionamento completo é **manual por `workflow_dispatch`**, não automático por merge ou push. Na aba Actions:
+O provisionamento completo é **manual por `workflow_dispatch`**, com `component=all` e confirmação. Na aba Actions:
 
 | Ambiente | Workflow | Confirmação |
 |---|---|---|
@@ -66,7 +66,17 @@ Selecione a referência correspondente ao ambiente. `run_smoke_tests` é opciona
 
 O fluxo valida credenciais, state e recursos residuais; provisiona rede, EKS, ECR, Gateway e componentes de observabilidade; publica dados de rede; aciona o banco e a Lambda; autoriza o security group da Lambda no RDS; publica o código da Lambda; integra `/auth/cpf`; publica a base do Gateway; aciona o deploy da API; integra o proxy e confere outputs. Os smoke tests executam somente quando solicitados.
 
-A API possui seu próprio deploy automático por push com filtro de arquivos. Banco e Lambda recebem dispatch para apply/deploy. Esses gatilhos não tornam o provisionamento completo automático.
+### Atualização automática de ambientes existentes
+
+Após merge, `homolog` atualiza homolog e `main` atualiza prod. API, Lambda e banco validam seus arquivos relevantes e solicitam a atualização do próprio componente ao coordenador. Mudanças de Terraform e dos scripts de coordenação neste repositório atualizam a plataforma existente, após a CI. README, Postman e documentação não disparam apply.
+
+Os workflows centrais [homolog](.github/workflows/provision-homolog.yml) e [prod](.github/workflows/provision-prod.yml) recebem `component=api`, `database`, `lambda`, `lambda-code` ou `platform`, com `source_sha` completo. Esses modos atualizam um componente; `all` mantém o provisionamento completo manual. Para repetir uma atualização da plataforma, informe o SHA da própria branch. Para API/Lambda/banco, use a reexecução manual do workflow do componente, que encaminha o pedido à mesma fila.
+
+Cada ambiente possui um grupo de concorrência compartilhado entre atualizações, provisionamento, destroy e manutenção. `queue: max` preserva até 100 pedidos pendentes, sem cancelar a execução em andamento; o limite e a ordem de espera seguem as [regras do GitHub Actions](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency). Os workers recebem `orchestrated=true`, `parent_run_id` e `source_sha`, verificam a execução pai e o histórico da branch antes de acessar a AWS e não geram novos pedidos. O coordenador aguarda o worker identificado pela execução pai.
+
+Toda atualização Terraform executa `validate`, gera um plano salvo e verifica remoções/substituições antes de aplicar exatamente esse plano. Um plano bloqueado exige revisão e aprovação explícita; não há liberação automática de alterações destrutivas. A atualização de plataforma exige state e integrações existentes, preserva os endpoints do Gateway e não inicia o provisionamento completo se o ambiente estiver ausente. Os locks S3 permanecem ativos.
+
+As decisões e os controles de promoção estão na [ADR-020](https://github.com/techdgconsulting/oficina-dgcar-docs/blob/homolog/docs/adr/ADR-020-promocao-e-deploy-automatico.md).
 
 ### Pré-requisitos por environment
 
@@ -97,7 +107,7 @@ A política `oficina-dgcar-<ambiente> - Observabilidade` tem oito condições. O
 | Atualizar Dashboard Negocio Homolog — `business` | Aplica somente o dashboard de negócio, com proteção de escopo e validação das consultas quando há alteração |
 | Mesmo workflow — `inspect` | Inspeciona telemetria em modo de leitura |
 
-O workflow `Atualizar Dashboard Negocio Homolog` executa automaticamente por push na branch `homolog` quando mudam `terraform/observability.tf`, qualquer arquivo de `scripts/observability/**` ou `.github/workflows/dashboard-homolog.yml`. No push, executa o fluxo `business`. Na execução manual por `workflow_dispatch`, o input `scope` tem padrão `business` e permite escolher `inspect`. O filtro de scripts inclui toda a pasta de observabilidade, mesmo arquivos usados pelo dashboard operacional.
+Os workflows específicos de dashboards são manuais e servem à manutenção e inspeção de homolog. O fluxo automático de Terraform pertence ao coordenador, evitando dois applies para a mesma alteração. `scope=inspect` mantém a inspeção sem apply.
 
 Os validadores executam NRQL via NerdGraph antes do apply. A validação operacional ao vivo compara pods/limites com Kubernetes, verifica health externo e duas requisições a `/api-docs` pelo LoadBalancer, correlacionadas com logs e APM. `redeploy_api=true` na modalidade deploy pausa e restaura a API durante o upgrade Helm e causa indisponibilidade temporária.
 
@@ -143,7 +153,7 @@ Em **Validar Escala HPA Homolog**, escolha `configure-and-test` para configurar 
 
 O Runner funcional do Postman não substitui carga concorrente nem a confirmação de readiness pelo Kubernetes.
 
-O workflow também executa automaticamente em pushes na branch `homolog` que alterem `terraform/hpa.tf`, `terraform/node-pod-capacity.py`, `scripts/hpa/**` ou `.github/workflows/hpa-homolog.yml`. Nesse acionamento, configura o suporte e executa o teste, incluindo a pausa temporária da API e sua restauração antes da carga, com indisponibilidade durante a configuração.
+O ensaio do HPA é manual. Mudanças de infraestrutura seguem a atualização automática central; executar o teste de carga continua sendo uma operação explícita.
 
 ### Consulta e critérios do ensaio
 
@@ -232,9 +242,9 @@ A orquestração valida identidade AWS, state e locks; remove workloads e Servic
 
 ### Compatibilidade entre repositórios
 
-Os workflows de remoção despacham `action=destroy-infra` para a Lambda na branch `main`. A revisão local de homolog da Lambda oferece `package`, `apply-infra` e `deploy-code`; a implementação de destroy está em main. Confira a referência efetivamente acionada: a configuração da branch homolog não descreve automaticamente o comportamento da main.
+Os workflows de remoção despacham `action=destroy-infra` e `action=destroy` para os workers, na referência de recuperação `main`, com confirmação e identificação do coordenador. Não existe gatilho automático de destroy.
 
-No apply do banco da revisão de homolog considerada, homolog usa retenção automática zero, `deletion_protection=false` e `skip_final_snapshot=true`; prod usa retenção de sete dias, proteção contra exclusão e snapshot final. A preparação que desativa a proteção na instância existente está condicionada a homolog nessa revisão. Passar `deletion_protection=false` ao destroy não altera sozinho uma instância prod já protegida. Confira a branch acionada e o [README de infra-db](https://github.com/techdgconsulting/oficina-dgcar-infra-db/blob/homolog/README.md) antes da remoção.
+O banco utiliza `db.t3.micro`, `gp2` e retenção automática zero nos dois ambientes. Prod mantém proteção contra exclusão e snapshot final. A preparação de destroy remove a proteção de forma explícita e, em prod, usa um snapshot final único por execução. Consulte o [README de infra-db](https://github.com/techdgconsulting/oficina-dgcar-infra-db/blob/homolog/README.md).
 
 ### Tratamento de falhas operacionais
 
