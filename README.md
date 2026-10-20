@@ -121,7 +121,7 @@ Esses workflows e o script live estão direcionados a homolog. Prod utiliza o pr
 | Health externo | Último SUCCESS/FAILED do readiness pelo Gateway, em janela fixa de cinco minutos. Sem amostras significa ausência de telemetria. |
 | Uptime | Percentual de `SyntheticCheck` com SUCCESS no período selecionado; não representa disponibilidade anterior à criação do monitor. |
 | Latência e tráfego | p95 e média em milissegundos, throughput por minuto e erros HTTP por código. |
-| CPU e memória | Consumo e limite real do container `oficina-api`, por pod; CPU em cores e memória em MiB. Ausência da linha de limite não significa limite zero. |
+| CPU e memória | CPU por pod mostra média, máximo observado por intervalo, alvo de 70% do request e limite do container `oficina-api`, em cores. Memória mostra consumo e limite em MiB. Ausência de uma linha de referência não significa valor zero. |
 | Falhas de OS | Evento `FALHA_PROCESSAMENTO`, filtrado por `app_name` do ambiente. |
 | Logs | Data/hora, nível, mensagem, método, rota, status HTTP, duração, `correlationId`, `trace.id` e pod. |
 
@@ -144,6 +144,8 @@ O alerta externo considera duas janelas consecutivas de um minuto com falha e pe
 ## HPA e capacidade
 
 O HPA usa CPU alvo de 70% sobre request de 250m, mínimo 1 e máximo 3 réplicas. A API tem limit de CPU 500m e request/limit de memória 512Mi/768Mi. O Metrics Server fornece a métrica ao HPA; New Relic serve para observação.
+
+O gráfico de CPU apresenta `average(cpuUsedCores)`, `max(cpuUsedCores)`, `latest(cpuRequestedCores) * 0.7` e `latest(cpuLimitCores)`. Com request de 250m, o alvo fica em 0,175 core e o limite em 0,5 core. O máximo considera somente as amostras recebidas em cada intervalo e não recupera picos ausentes da coleta. A linha de alvo é uma referência por pod, enquanto a decisão do HPA considera suas métricas e regras de controle. A validação operacional confere o request nos pods e exige alvo de CPU de 70% no HPA aplicado.
 
 O manifesto declara estabilização de subida de 60 s e descida de 300 s. O HPA gerado pelo workflow da API não declara `behavior`; confira o objeto aplicado antes de atribuir uma janela ao ambiente.
 
@@ -244,7 +246,7 @@ A orquestração valida identidade AWS, state e locks; remove workloads e Servic
 
 Os workflows de remoção despacham `action=destroy-infra` e `action=destroy` para os workers, na branch do ambiente (`homolog` ou `main`), com confirmação e identificação do coordenador. Não existe gatilho automático de destroy.
 
-O banco utiliza `db.t3.micro`, `gp2` e retenção automática zero nos dois ambientes. Prod mantém proteção contra exclusão e snapshot final. A preparação de destroy remove a proteção de forma explícita e, em prod, usa um snapshot final único por execução. Consulte o [README de infra-db](https://github.com/techdgconsulting/oficina-dgcar-infra-db/blob/homolog/README.md).
+O banco utiliza `db.t3.micro`, `gp2` e retenção automática zero nos dois ambientes. O destroy de homolog e prod remove os recursos sem gerar snapshot final ou reter backups do RDS. Prod mantém proteção contra exclusão durante a operação; a preparação do destroy confirmado a desativa e sincroniza a política sem snapshot. O worker do banco também remove snapshots manuais e backups retidos da instância exata do ambiente, inclusive de execuções anteriores. A verificação final falha se encontrar esses resíduos. O backend S3 compartilhado do Terraform permanece como infraestrutura de controle, fora do destroy do ambiente. Consulte o [README de infra-db](https://github.com/techdgconsulting/oficina-dgcar-infra-db/blob/homolog/README.md).
 
 ### Tratamento de falhas operacionais
 
@@ -252,7 +254,7 @@ O banco utiliza `db.t3.micro`, `gp2` e retenção automática zero nos dois ambi
 |---|---|
 | URI inválida no Gateway | Integrações dependentes são aplicadas após obter os endpoints reais da Lambda e da API. |
 | Restrições Free Tier no RDS | Confira classe, storage e retenção definidos para o ambiente no repositório de banco. |
-| Snapshot final ou deletion protection | Homolog usa remoção sem snapshot; prod exige verificar proteção e nome do snapshot na referência acionada. |
+| Snapshot final ou deletion protection | Ambos removem sem snapshot final. Confira a preparação que desativa a proteção e sincroniza o state, além das permissões para excluir snapshots e backups retidos do ambiente. |
 | Remoção da Lambda | Confira suporte a `destroy-infra`, empacotamento para refresh do state e liberação do security group na referência acionada. |
 | Outputs ou secrets de integração ausentes | Confira a limpeza idempotente do workflow e os valores publicados pela orquestração. |
 | Backend e região | O backend usa `use_lockfile=true`; confira a região configurada, com fallback operacional `us-east-1` nos workflows que o definem. |

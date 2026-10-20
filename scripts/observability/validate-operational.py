@@ -115,7 +115,15 @@ def validate_live():
     wait_for("active pods match Kubernetes (" + str(len(active)) + ")",
              lambda: nrql(query)[0]["ativos"] == len(active))
 
+    hpa = kubectl("get", "hpa", "oficina-api", "-n", "oficina")
+    cpu_targets = [m["resource"]["target"].get("averageUtilization")
+                   for m in hpa["spec"]["metrics"]
+                   if m.get("type") == "Resource" and m.get("resource", {}).get("name") == "cpu"]
+    if cpu_targets != [70]:
+        raise ValueError("CPU chart reference requires the deployed HPA target to be 70% of request")
+
     samples = nrql("FROM K8sContainerSample SELECT latest(cpuLimitCores) AS cpu, "
+                   "latest(cpuRequestedCores) AS cpu_request, latest(cpuRequestedCores) * 0.7 AS hpa_target, "
                    "latest(memoryLimitBytes) AS memoria "
                    f"WHERE {K8S} AND containerName = 'oficina-api' FACET podName SINCE 3 minutes ago LIMIT MAX")
     observed = {business.facet(row)[0]: row for row in samples}
@@ -123,11 +131,18 @@ def validate_live():
         name = pod["metadata"]["name"]
         if name not in active:
             continue
-        limits = next(c["resources"]["limits"] for c in pod["spec"]["containers"] if c["name"] == "oficina-api")
+        resources = next(c["resources"] for c in pod["spec"]["containers"] if c["name"] == "oficina-api")
+        limits = resources["limits"]
         if name not in observed or not math.isclose(observed[name]["cpu"], cpu_cores(limits["cpu"])) or not math.isclose(
                 observed[name]["memoria"], bytes_quantity(limits["memory"])):
             raise ValueError("Resource maximum lines do not match deployed limits")
         print(f"OK resource lines: CPU={observed[name]['cpu']} cores; memory={observed[name]['memoria'] / 1048576} MiB")
+        cpu_request = cpu_cores(resources["requests"]["cpu"])
+        if (observed[name].get("cpu_request") is None or observed[name].get("hpa_target") is None
+                or not math.isclose(observed[name]["cpu_request"], cpu_request)
+                or not math.isclose(observed[name]["hpa_target"], cpu_request * 0.7)):
+            raise ValueError("CPU request or HPA reference line does not match deployed resources")
+        print(f"OK HPA reference: request={cpu_request} cores; target={cpu_request * 0.7:g} cores (70%)")
 
     config = kubectl("get", "configmap", "oficina-api-config", "-n", "oficina")["data"]
     if config.get("NEW_RELIC_APPLICATION_LOGGING_FORWARDING_ENABLED") != "false":

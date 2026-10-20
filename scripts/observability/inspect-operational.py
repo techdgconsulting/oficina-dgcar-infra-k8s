@@ -11,7 +11,7 @@ spec.loader.exec_module(business)
 queries = {
     "container fields": "FROM K8sContainerSample SELECT keyset() WHERE namespaceName = 'oficina' SINCE 30 minutes ago",
     "pod fields": "FROM K8sPodSample SELECT keyset() WHERE namespaceName = 'oficina' SINCE 30 minutes ago",
-    "resources": "FROM K8sContainerSample SELECT latest(cpuLimitCores), latest(memoryLimitBytes), latest(cpuUsedCores), latest(memoryWorkingSetBytes), latest(isReady) WHERE clusterName = 'oficina-dgcar-homolog-eks' AND namespaceName = 'oficina' FACET podName, containerName SINCE 5 minutes ago",
+    "resources": "FROM K8sContainerSample SELECT latest(cpuLimitCores), latest(cpuRequestedCores), latest(cpuRequestedCores) * 0.7 AS hpaTargetCores, average(cpuUsedCores), max(cpuUsedCores), latest(memoryLimitBytes), latest(memoryWorkingSetBytes), latest(isReady) WHERE clusterName = 'oficina-dgcar-homolog-eks' AND namespaceName = 'oficina' FACET podName, containerName SINCE 5 minutes ago",
     "log fields": "FROM Log SELECT keyset() WHERE entity.name = 'oficina-dgcar-api-homolog' OR application = 'oficina-mecanica-dgcar' OR namespace_name = 'oficina' SINCE 30 minutes ago",
     "log counts": "FROM Log SELECT count(*), filter(count(*), WHERE correlationId IS NOT NULL), filter(count(*), WHERE `trace.id` IS NOT NULL) WHERE entity.name = 'oficina-dgcar-api-homolog' OR namespace_name = 'oficina' SINCE 30 minutes ago",
     "synthetics": "FROM SyntheticCheck SELECT count(*) FACET monitorName SINCE 1 day ago",
