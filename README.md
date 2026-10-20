@@ -121,7 +121,7 @@ Esses workflows e o script live estão direcionados a homolog. Prod utiliza o pr
 | Health externo | Último SUCCESS/FAILED do readiness pelo Gateway, em janela fixa de cinco minutos. Sem amostras significa ausência de telemetria. |
 | Uptime | Percentual de `SyntheticCheck` com SUCCESS no período selecionado; não representa disponibilidade anterior à criação do monitor. |
 | Latência e tráfego | p95 e média em milissegundos, throughput por minuto e erros HTTP por código. |
-| CPU e memória | Consumo e limite real do container `oficina-api`, por pod; CPU em cores e memória em MiB. Ausência da linha de limite não significa limite zero. |
+| CPU e memória | CPU por pod mostra média, máximo observado por intervalo, alvo de 70% do request e limite do container `oficina-api`, em cores. Memória mostra consumo e limite em MiB. Ausência de uma linha de referência não significa valor zero. |
 | Falhas de OS | Evento `FALHA_PROCESSAMENTO`, filtrado por `app_name` do ambiente. |
 | Logs | Data/hora, nível, mensagem, método, rota, status HTTP, duração, `correlationId`, `trace.id` e pod. |
 
@@ -144,6 +144,8 @@ O alerta externo considera duas janelas consecutivas de um minuto com falha e pe
 ## HPA e capacidade
 
 O HPA usa CPU alvo de 70% sobre request de 250m, mínimo 1 e máximo 3 réplicas. A API tem limit de CPU 500m e request/limit de memória 512Mi/768Mi. O Metrics Server fornece a métrica ao HPA; New Relic serve para observação.
+
+O gráfico de CPU apresenta `average(cpuUsedCores)`, `max(cpuUsedCores)`, `latest(cpuRequestedCores) * 0.7` e `latest(cpuLimitCores)`. Com request de 250m, o alvo fica em 0,175 core e o limite em 0,5 core. O máximo considera somente as amostras recebidas em cada intervalo e não recupera picos ausentes da coleta. A linha de alvo é uma referência por pod, enquanto a decisão do HPA considera suas métricas e regras de controle. A validação operacional confere o request nos pods e exige alvo de CPU de 70% no HPA aplicado.
 
 O manifesto declara estabilização de subida de 60 s e descida de 300 s. O HPA gerado pelo workflow da API não declara `behavior`; confira o objeto aplicado antes de atribuir uma janela ao ambiente.
 
