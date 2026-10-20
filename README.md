@@ -51,7 +51,7 @@ python3 -m unittest discover -s scripts/hpa -p 'test_*.py'
 bash -n scripts/preflight/*.sh scripts/github-actions/*.sh scripts/aws/*.sh scripts/smoke/*.sh
 ```
 
-Esses comandos validam configuração e proteções; não provisionam a AWS. Um plano real exige backend, variáveis e credenciais do ambiente. A CI **Validar Infra K8s** roda em PRs e pushes de homolog/main e faz um plano sem refresh com observabilidade New Relic desabilitada. Esse plano não substitui consultas NerdGraph ou validação de telemetria.
+Esses comandos validam configuração e proteções; não provisionam a AWS. Um plano real exige backend, variáveis e credenciais do ambiente. A CI **Validar Infra K8s** roda em PRs e é reutilizada pelo coordenador nas atualizações de homolog/main; faz um plano sem refresh com observabilidade New Relic desabilitada. Esse plano não substitui consultas NerdGraph ou validação de telemetria.
 
 ## Provisionamento completo
 
@@ -68,13 +68,13 @@ O fluxo valida credenciais, state e recursos residuais; provisiona rede, EKS, EC
 
 ### Atualização automática de ambientes existentes
 
-Após merge, `homolog` atualiza homolog e `main` atualiza prod. API, Lambda e banco validam seus arquivos relevantes e solicitam a atualização do próprio componente ao coordenador. Mudanças de Terraform e dos scripts de coordenação neste repositório atualizam a plataforma existente, após a CI. README, Postman e documentação não disparam apply.
+Após merge, `homolog` atualiza homolog e `main` atualiza prod. API, Lambda e banco validam seus arquivos relevantes e solicitam a atualização do próprio componente ao coordenador. Mudanças de Terraform e dos scripts de coordenação neste repositório atualizam a plataforma existente, após a CI. README, Postman e documentação não disparam apply. Os manifests em [k8s/](k8s/) são modelos para validação e parametrização; contêm imagem e endpoints de exemplo. O deploy efetivo da API usa seu próprio workflow com a imagem, a configuração e os secrets do ambiente, por isso esses modelos não são aplicados automaticamente.
 
 Os workflows centrais [homolog](.github/workflows/provision-homolog.yml) e [prod](.github/workflows/provision-prod.yml) recebem `component=api`, `database`, `lambda`, `lambda-code` ou `platform`, com `source_sha` completo. Esses modos atualizam um componente; `all` mantém o provisionamento completo manual. Para repetir uma atualização da plataforma, informe o SHA da própria branch. Para API/Lambda/banco, use a reexecução manual do workflow do componente, que encaminha o pedido à mesma fila.
 
 Cada ambiente possui um grupo de concorrência compartilhado entre atualizações, provisionamento, destroy e manutenção. `queue: max` preserva até 100 pedidos pendentes, sem cancelar a execução em andamento; o limite e a ordem de espera seguem as [regras do GitHub Actions](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency). Os workers recebem `orchestrated=true`, `parent_run_id` e `source_sha`, verificam a execução pai e o histórico da branch antes de acessar a AWS e não geram novos pedidos. O coordenador aguarda o worker identificado pela execução pai.
 
-Toda atualização Terraform executa `validate`, gera um plano salvo e verifica remoções/substituições antes de aplicar exatamente esse plano. Um plano bloqueado exige revisão e aprovação explícita; não há liberação automática de alterações destrutivas. A atualização de plataforma exige state e integrações existentes, preserva os endpoints do Gateway e não inicia o provisionamento completo se o ambiente estiver ausente. Os locks S3 permanecem ativos.
+Toda atualização Terraform executa `validate`, gera um plano salvo e verifica remoções/substituições antes de aplicar exatamente esse plano. Um plano bloqueado exige revisão e aprovação explícita; não há liberação automática de alterações destrutivas. A atualização de plataforma exige state e integrações existentes, preserva os endpoints do Gateway e não inicia o provisionamento completo se o ambiente estiver ausente. Os locks S3 permanecem ativos. Os scripts de [coordenação e autorização](scripts/ci/) incluem os [cenários automatizados dos controles de deploy](scripts/ci/test_deployment.py).
 
 As decisões e os controles de promoção estão na [ADR-020](https://github.com/techdgconsulting/oficina-dgcar-docs/blob/homolog/docs/adr/ADR-020-promocao-e-deploy-automatico.md).
 
