@@ -42,8 +42,8 @@ def verify_parent(run, environment, branch, action):
     if run.get("path", "").split("@", 1)[0] != f".github/workflows/{expected}-{environment}.yml":
         raise ValueError("Workflow coordenador incompatível com a operação.")
     # The existing manual destroy workflow is dispatched on the default branch.
-    allowed_branch = "main" if expected == "destroy" else branch
-    if run.get("head_branch") != allowed_branch or run.get("event") not in ("push", "workflow_dispatch"):
+    allowed_branches = {"main", "homolog" if environment == "homolog" else "main"} if expected == "destroy" else {branch}
+    if run.get("head_branch") not in allowed_branches or run.get("event") not in ("push", "workflow_dispatch"):
         raise ValueError("Branch ou evento do coordenador inválido.")
     if expected == "destroy" and run.get("event") != "workflow_dispatch":
         raise ValueError("Destroy exige acionamento manual do coordenador.")
