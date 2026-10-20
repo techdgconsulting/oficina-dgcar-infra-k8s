@@ -6,5 +6,17 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 5.0"
     }
+    helm = {
+      source  = "hashicorp/helm"
+      version = "~> 2.17"
+    }
+    kubernetes = {
+      source  = "hashicorp/kubernetes"
+      version = "~> 2.38"
+    }
+    newrelic = {
+      source  = "newrelic/newrelic"
+      version = "~> 3.99"
+    }
   }
 }

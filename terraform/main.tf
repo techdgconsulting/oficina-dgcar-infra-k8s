@@ -15,6 +15,18 @@ locals {
   )
 
   github_actions_iam_user_arn = var.github_actions_iam_user_arn == null ? "" : trimspace(var.github_actions_iam_user_arn)
+
+  new_relic_kubernetes_enabled = var.enable_new_relic_kubernetes
+  new_relic_observability_enabled = (
+    var.enable_new_relic_observability &&
+    var.new_relic_account_id != null &&
+    var.new_relic_api_key != null &&
+    trimspace(var.new_relic_api_key) != ""
+  )
+
+  new_relic_app_name      = "${var.project_name}-api-${var.environment}"
+  new_relic_cluster_name  = "${local.name}-eks"
+  new_relic_namespace_app = "oficina"
 }
 
 resource "aws_vpc" "main" {
@@ -264,6 +276,77 @@ resource "aws_eks_node_group" "main" {
   tags = {
     Name = "${local.name}-nodes"
   }
+}
+
+resource "helm_release" "new_relic_kubernetes" {
+  count = local.new_relic_kubernetes_enabled ? 1 : 0
+
+  name             = var.new_relic_release_name
+  repository       = "https://helm-charts.newrelic.com"
+  chart            = "nri-bundle"
+  version          = var.new_relic_chart_version
+  namespace        = var.new_relic_namespace
+  create_namespace = true
+  wait             = true
+  timeout          = 600
+
+  values = [
+    yamlencode({
+      global = {
+        cluster     = aws_eks_cluster.main.name
+        licenseKey  = var.new_relic_license_key
+        lowDataMode = true
+      }
+
+      "newrelic-infrastructure" = {
+        enabled    = true
+        privileged = true
+        # Single-node workload measured at 12-21 MiB per container in homolog.
+        # Keep the chart limits; adjust only reservations to fit a second API pod.
+        ksm = {
+          ksm       = { resources = { requests = { cpu = "25m", memory = "32Mi" } } }
+          forwarder = { resources = { requests = { cpu = "25m", memory = "32Mi" } } }
+        }
+        kubelet = {
+          kubelet = { resources = { requests = { cpu = "25m", memory = "32Mi" } } }
+          agent   = { resources = { requests = { cpu = "25m", memory = "32Mi" } } }
+        }
+      }
+
+      "nri-metadata-injection" = {
+        enabled = true
+      }
+
+      "kube-state-metrics" = {
+        enabled = true
+      }
+
+      "nri-kube-events" = {
+        enabled = true
+      }
+
+      "nri-prometheus" = {
+        enabled = false
+      }
+
+      "newrelic-logging" = {
+        enabled     = true
+        lowDataMode = false
+        fluentBit = {
+          # Only API logs. JSON parsing preserves MDC and New Relic linking fields.
+          path = "/var/log/containers/oficina-api-*_${local.new_relic_namespace_app}_oficina-api-*.log"
+          config = {
+            filters = file("${path.module}/logging-filters.conf")
+          }
+        }
+      }
+    })
+  ]
+
+  depends_on = [
+    aws_eks_node_group.main,
+    kubernetes_job_v1.node_pod_capacity
+  ]
 }
 
 resource "aws_iam_user_policy_attachment" "github_actions_ecr_power_user" {

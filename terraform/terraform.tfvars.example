@@ -10,11 +10,17 @@ node_min_size       = 1
 node_max_size       = 2
 node_disk_size      = 20
 
+enable_new_relic_kubernetes = true
+new_relic_license_key       = null
+new_relic_namespace         = "newrelic"
+new_relic_release_name      = "newrelic-bundle"
+new_relic_chart_version     = null
+
 ecr_repository_name = "oficina-dgcar/oficina-api"
 
-enable_github_actions_eks_access = false
-github_actions_iam_user_name     = "github-actions-oficina-dgcar"
-github_actions_iam_user_arn      = null
+enable_github_actions_eks_access      = false
+github_actions_iam_user_name          = "github-actions-oficina-dgcar"
+github_actions_iam_user_arn           = null
 manage_github_actions_eks_access_entry = false
 
 enable_api_gateway          = true

@@ -38,6 +38,46 @@ output "eks_cluster_name" {
   value       = aws_eks_cluster.main.name
 }
 
+output "new_relic_kubernetes_enabled" {
+  description = "Whether the New Relic Kubernetes integration is enabled in this Terraform apply."
+  value       = local.new_relic_kubernetes_enabled
+}
+
+output "new_relic_kubernetes_namespace" {
+  description = "Namespace used by the New Relic Kubernetes integration."
+  value       = local.new_relic_kubernetes_enabled ? var.new_relic_namespace : null
+}
+
+output "new_relic_kubernetes_release" {
+  description = "Helm release used by the New Relic Kubernetes integration."
+  value       = local.new_relic_kubernetes_enabled ? var.new_relic_release_name : null
+}
+
+output "new_relic_observability_enabled" {
+  description = "Whether New Relic dashboards and alerts are enabled in this Terraform apply."
+  value       = nonsensitive(local.new_relic_observability_enabled)
+}
+
+output "new_relic_dashboard_api_guid" {
+  description = "Compatibility alias for the unified API and Kubernetes dashboard."
+  value       = nonsensitive(local.new_relic_observability_enabled ? newrelic_one_dashboard.operational[0].guid : null)
+}
+
+output "new_relic_dashboard_kubernetes_guid" {
+  description = "Compatibility alias for the unified API and Kubernetes dashboard."
+  value       = nonsensitive(local.new_relic_observability_enabled ? newrelic_one_dashboard.operational[0].guid : null)
+}
+
+output "new_relic_dashboard_business_guid" {
+  description = "GUID of the New Relic business dashboard."
+  value       = nonsensitive(local.new_relic_observability_enabled ? newrelic_one_dashboard.business[0].guid : null)
+}
+
+output "new_relic_alert_policy_id" {
+  description = "ID of the New Relic alert policy for Oficina DGCar."
+  value       = nonsensitive(local.new_relic_observability_enabled ? newrelic_alert_policy.oficina[0].id : null)
+}
+
 output "eks_cluster_endpoint" {
   description = "EKS API endpoint."
   value       = aws_eks_cluster.main.endpoint
@@ -61,4 +101,9 @@ output "api_gateway_endpoint" {
 output "api_gateway_execution_arn" {
   description = "HTTP API Gateway execution ARN."
   value       = var.enable_api_gateway ? aws_apigatewayv2_api.main[0].execution_arn : null
+}
+
+output "new_relic_dashboard_operational_guid" {
+  description = "GUID of the unified API and Kubernetes dashboard."
+  value       = nonsensitive(local.new_relic_observability_enabled ? newrelic_one_dashboard.operational[0].guid : null)
 }
