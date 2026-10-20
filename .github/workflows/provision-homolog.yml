@@ -1,11 +1,20 @@
 name: Provisionar Ambiente Homolog
 
+run-name: "${{ github.workflow }} | ${{ inputs.component || 'platform' }} | ${{ inputs.source_sha || github.sha }}"
+
 on:
+  push:
+    branches: [homolog]
+    paths:
+      - "terraform/**"
+      - "scripts/ci/**"
+      - "scripts/github-actions/**"
+      - ".github/workflows/provision-homolog.yml"
   workflow_dispatch:
     inputs:
       confirm:
         description: "Digite PROVISIONAR para criar o ambiente homolog"
-        required: true
+        required: false
         type: string
       run_smoke_tests:
         description: "Executar smoke tests ao final"
@@ -13,12 +22,22 @@ on:
         default: false
         type: boolean
 
+      component:
+        description: "all: full manual provision; other options: existing environment update"
+        type: choice
+        default: all
+        options: [all, api, database, lambda, lambda-code, platform]
+      source_sha:
+        description: "Validated source commit of the selected component"
+        type: string
+
 permissions:
   contents: read
 
 concurrency:
   group: ambiente-academico-homolog
   cancel-in-progress: false
+  queue: max
 
 env:
   TARGET_ENVIRONMENT: homolog
@@ -32,9 +51,14 @@ env:
   API_WORKFLOW: app-cd.yml
 
 jobs:
+  validate:
+    uses: ./.github/workflows/ci.yml
+    secrets: inherit
+
   provision:
+    needs: validate
     name: provisionar homolog
-    if: inputs.confirm == 'PROVISIONAR'
+    if: github.event_name == 'workflow_dispatch' && github.ref_name == 'homolog' && inputs.confirm == 'PROVISIONAR' && inputs.component == 'all'
     runs-on: ubuntu-latest
     environment: homolog
 
@@ -119,16 +143,20 @@ jobs:
         working-directory: terraform
         env:
           TF_VAR_environment: homolog
-          TF_VAR_api_backend_url: ""
-          TF_VAR_auth_lambda_invoke_arn: ""
-          TF_VAR_auth_lambda_function_name: ""
+          TF_VAR_api_backend_url: ${{ secrets.API_BACKEND_URL || '' }}
+          TF_VAR_auth_lambda_invoke_arn: ${{ secrets.AUTH_LAMBDA_INVOKE_ARN || '' }}
+          TF_VAR_auth_lambda_function_name: ${{ secrets.AUTH_LAMBDA_FUNCTION_NAME || '' }}
           TF_VAR_enable_github_actions_eks_access: "true"
           TF_VAR_github_actions_iam_user_arn: ${{ secrets.GH_ACTIONS_IAM_USER_ARN }}
           TF_VAR_github_actions_iam_user_name: ${{ secrets.GH_ACTIONS_IAM_USER_NAME }}
           TF_VAR_new_relic_license_key: ${{ secrets.NEW_RELIC_LICENSE_KEY }}
           TF_VAR_new_relic_api_key: ${{ secrets.NEW_RELIC_API_KEY }}
           TF_VAR_new_relic_account_id: ${{ secrets.NEW_RELIC_ACCOUNT_ID || vars.NEW_RELIC_ACCOUNT_ID }}
-        run: terraform apply -auto-approve
+        run: |
+          terraform plan -input=false -out=deployment.tfplan
+          terraform show -json deployment.tfplan > deployment-plan.json
+          python3 ../scripts/ci/deployment.py plan deployment-plan.json
+          terraform apply -input=false deployment.tfplan
 
       - name: Publish network outputs
         working-directory: terraform
@@ -325,7 +353,7 @@ jobs:
         working-directory: terraform
         env:
           TF_VAR_environment: homolog
-          TF_VAR_api_backend_url: ""
+          TF_VAR_api_backend_url: ${{ secrets.API_BACKEND_URL || '' }}
           TF_VAR_enable_github_actions_eks_access: "true"
           TF_VAR_github_actions_iam_user_arn: ${{ secrets.GH_ACTIONS_IAM_USER_ARN }}
           TF_VAR_github_actions_iam_user_name: ${{ secrets.GH_ACTIONS_IAM_USER_NAME }}
@@ -348,7 +376,10 @@ jobs:
 
           export TF_VAR_auth_lambda_function_name="$AUTH_LAMBDA_FUNCTION_NAME"
           export TF_VAR_auth_lambda_invoke_arn="$AUTH_LAMBDA_INVOKE_ARN"
-          terraform apply -auto-approve
+          terraform plan -input=false -out=deployment.tfplan
+          terraform show -json deployment.tfplan > deployment-plan.json
+          python3 ../scripts/ci/deployment.py plan deployment-plan.json
+          terraform apply -input=false deployment.tfplan
 
       - name: Ensure GitHub Actions EKS access
         working-directory: terraform
@@ -426,7 +457,10 @@ jobs:
           echo "api_backend_url=$API_BACKEND_URL" >> "$GITHUB_OUTPUT"
           echo "gateway_base_url=$GATEWAY_BASE_URL" >> "$GITHUB_OUTPUT"
           export TF_VAR_api_backend_url="$API_BACKEND_URL"
-          terraform apply -auto-approve
+          terraform plan -input=false -out=deployment.tfplan
+          terraform show -json deployment.tfplan > deployment-plan.json
+          python3 ../scripts/ci/deployment.py plan deployment-plan.json
+          terraform apply -input=false deployment.tfplan
 
       - name: Validate final outputs
         working-directory: terraform
@@ -455,3 +489,76 @@ jobs:
           CLIENT_TEST_OS_NUMBER: ${{ secrets.CLIENT_TEST_OS_NUMBER || vars.CLIENT_TEST_OS_NUMBER }}
           CLIENT_OTHER_OS_NUMBER: ${{ secrets.CLIENT_OTHER_OS_NUMBER || vars.CLIENT_OTHER_OS_NUMBER }}
         run: scripts/smoke/smoke-tests.sh
+
+  update:
+    needs: validate
+    name: Update existing environment
+    if: github.ref_name == 'homolog' && (github.event_name == 'push' || inputs.component != 'all')
+    runs-on: ubuntu-latest
+    environment: homolog
+    timeout-minutes: 55
+    env:
+      COMPONENT: ${{ github.event_name == 'push' && 'platform' || inputs.component }}
+      DEPLOY_SOURCE_SHA: ${{ github.event_name == 'push' && github.sha || inputs.source_sha }}
+      GH_TOKEN: ${{ secrets.GH_AUTOMATION_TOKEN }}
+      TF_VAR_environment: homolog
+      TF_VAR_api_backend_url: ${{ secrets.API_BACKEND_URL }}
+      TF_VAR_auth_lambda_invoke_arn: ${{ secrets.AUTH_LAMBDA_INVOKE_ARN }}
+      TF_VAR_auth_lambda_function_name: ${{ secrets.AUTH_LAMBDA_FUNCTION_NAME }}
+      TF_VAR_enable_github_actions_eks_access: "true"
+      TF_VAR_github_actions_iam_user_arn: ${{ secrets.GH_ACTIONS_IAM_USER_ARN }}
+      TF_VAR_github_actions_iam_user_name: ${{ secrets.GH_ACTIONS_IAM_USER_NAME }}
+      TF_VAR_new_relic_license_key: ${{ secrets.NEW_RELIC_LICENSE_KEY }}
+      TF_VAR_new_relic_api_key: ${{ secrets.NEW_RELIC_API_KEY }}
+      TF_VAR_new_relic_account_id: ${{ secrets.NEW_RELIC_ACCOUNT_ID || vars.NEW_RELIC_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - name: Validate deployment request
+        run: |
+          python3 -m unittest discover -s scripts/ci -p 'test_*.py'
+          python3 scripts/ci/coordinate.py validate
+      - name: Checkout validated platform source
+        if: env.COMPONENT == 'platform'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DEPLOY_SOURCE_SHA }}
+      - name: Prepare shell scripts
+        run: find scripts -type f -name "*.sh" -exec chmod +x {} \;
+      - name: Deploy selected application or database
+        if: env.COMPONENT != 'platform'
+        run: python3 scripts/ci/coordinate.py dispatch
+      - uses: hashicorp/setup-terraform@v3
+        if: env.COMPONENT == 'platform'
+        with:
+          terraform_version: 1.15.8
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@v4
+        if: env.COMPONENT == 'platform'
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Plan and update existing platform
+        if: env.COMPONENT == 'platform'
+        working-directory: terraform
+        env:
+          TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
+          TF_STATE_KEY: ${{ secrets.TF_STATE_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$TF_VAR_api_backend_url"
+          test -n "$TF_VAR_auth_lambda_invoke_arn"
+          test -n "$TF_VAR_auth_lambda_function_name"
+          terraform init -backend-config="bucket=$TF_STATE_BUCKET" -backend-config="key=$TF_STATE_KEY" -backend-config="region=$AWS_REGION" -backend-config="use_lockfile=true"
+          terraform fmt -check -recursive
+          terraform validate
+          terraform state list | grep -Fxq aws_eks_cluster.main || { echo "::error::Ambiente ausente. Execute o provisionamento completo manualmente."; exit 1; }
+          terraform plan -input=false -out=deployment.tfplan
+          terraform show -json deployment.tfplan > deployment-plan.json
+          python3 ../scripts/ci/deployment.py plan deployment-plan.json
+          terraform apply -input=false deployment.tfplan
+      - name: Link coordinator execution
+        if: always()
+        run: echo "Componente $COMPONENT; origem $DEPLOY_SOURCE_SHA; ambiente homolog" >> "$GITHUB_STEP_SUMMARY"

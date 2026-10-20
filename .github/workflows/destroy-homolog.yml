@@ -14,6 +14,7 @@ permissions:
 concurrency:
   group: ambiente-academico-homolog
   cancel-in-progress: false
+  queue: max
 
 env:
   TARGET_ENVIRONMENT: homolog
@@ -26,7 +27,7 @@ env:
 jobs:
   destroy:
     name: destruir homolog
-    if: inputs.confirm == 'DESTRUIR'
+    if: github.event_name == 'workflow_dispatch' && (github.ref_name == 'homolog' || github.ref_name == 'main') && inputs.confirm == 'DESTRUIR'
     runs-on: ubuntu-latest
     environment: homolog
 
@@ -175,21 +176,21 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GH_AUTOMATION_TOKEN }}
         run: |
-          scripts/github-actions/dispatch-workflow.sh "$INFRA_DB_REPO" "$INFRA_DB_WORKFLOW" main \
+          scripts/github-actions/dispatch-workflow.sh "$INFRA_DB_REPO" "$INFRA_DB_WORKFLOW" homolog \
             -f action=destroy \
             -f environment="$TARGET_ENVIRONMENT" \
             -f confirm_destroy=DESTROY
-          scripts/github-actions/wait-workflow.sh "$INFRA_DB_REPO" "$INFRA_DB_WORKFLOW" main
+          scripts/github-actions/wait-workflow.sh "$INFRA_DB_REPO" "$INFRA_DB_WORKFLOW" homolog
 
       - name: Destroy Lambda infrastructure
         env:
           GH_TOKEN: ${{ secrets.GH_AUTOMATION_TOKEN }}
         run: |
-          scripts/github-actions/dispatch-workflow.sh "$AUTH_LAMBDA_REPO" "$AUTH_LAMBDA_WORKFLOW" main \
+          scripts/github-actions/dispatch-workflow.sh "$AUTH_LAMBDA_REPO" "$AUTH_LAMBDA_WORKFLOW" homolog \
             -f action=destroy-infra \
             -f environment="$TARGET_ENVIRONMENT" \
             -f confirm_destroy=DESTROY
-          scripts/github-actions/wait-workflow.sh "$AUTH_LAMBDA_REPO" "$AUTH_LAMBDA_WORKFLOW" main
+          scripts/github-actions/wait-workflow.sh "$AUTH_LAMBDA_REPO" "$AUTH_LAMBDA_WORKFLOW" homolog
 
       - name: Wait for VPC dependencies
         if: steps.tf_outputs.outputs.vpc_id != ''

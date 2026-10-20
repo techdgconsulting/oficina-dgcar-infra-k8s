@@ -1,12 +1,6 @@
 name: Atualizar Dashboard Operacional Homolog
 
 on:
-  push:
-    branches: [homolog]
-    paths:
-      - terraform/operational.tf
-      - scripts/observability/validate-operational.py
-      - .github/workflows/operational-homolog.yml
   workflow_dispatch:
     inputs:
       phase:
@@ -25,6 +19,7 @@ permissions:
 concurrency:
   group: ambiente-academico-homolog
   cancel-in-progress: false
+  queue: max
 
 jobs:
   operational:

@@ -1,13 +1,6 @@
 name: Validar Escala HPA Homolog
 
 on:
-  push:
-    branches: [homolog]
-    paths:
-      - terraform/hpa.tf
-      - terraform/node-pod-capacity.py
-      - scripts/hpa/**
-      - .github/workflows/hpa-homolog.yml
   workflow_dispatch:
     inputs:
       action:
@@ -22,6 +15,7 @@ permissions:
 concurrency:
   group: ambiente-academico-homolog
   cancel-in-progress: false
+  queue: max
 
 jobs:
   hpa:
